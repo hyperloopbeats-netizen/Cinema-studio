@@ -6,9 +6,11 @@ import type {
   CynthetocModeId,
   FractalStudioState,
   HologramRigMode,
+  KineticHarmMode,
   LiquidPresetId,
   LutPresetId,
   RealTvProfile,
+  SmartMorphModeId,
   StereoscopicModeId,
   UpscaleTier,
 } from './fractalBrain';
@@ -80,6 +82,20 @@ const HOLOGRAM_RIG_MAP: Record<HologramRigMode, number> = {
   volumetricSliceStack: 1,
   liquidGlassPrism: 2,
   floatingCausticField: 3,
+};
+
+const SMART_MORPH_MODE_MAP: Record<SmartMorphModeId, number> = {
+  organicExpand: 0,
+  gradientFlow: 1,
+  goldenSpiral: 2,
+  harmonicBreathe: 3,
+};
+
+const KINETIC_HARM_MODE_MAP: Record<KineticHarmMode, number> = {
+  chromaticRim: 0,
+  goldenAura: 1,
+  prismDiffract: 2,
+  thermalEcho: 3,
 };
 
 function getAppVisualProfile(appId: string): {
@@ -653,6 +669,24 @@ const SCREEN_FRAG_SRC = `
   uniform float uHoloScan;
   uniform float uHoloCaustic;
 
+  // Smart Morph Engine (Natural Frame Element Expansion)
+  uniform float uMorphOn;
+  uniform float uMorphMode; // 0:organicExpand, 1:gradientFlow, 2:goldenSpiral, 3:harmonicBreathe
+  uniform float uMorphForce;
+  uniform float uMorphCohesion;
+  uniform float uMorphRate;
+  uniform float uMorphRadial;
+  uniform float uMorphEdgePreserve;
+
+  // Kinetic Prism Harmonizer (Abby-matched spectral contour & aura synthesis)
+  uniform float uHarmOn;
+  uniform float uHarmMode; // 0:chromaticRim, 1:goldenAura, 2:prismDiffract, 3:thermalEcho
+  uniform float uHarmStrength;
+  uniform float uHarmEdge;
+  uniform float uHarmShift;
+  uniform float uHarmVig;
+  uniform vec3 uHarmColor;
+
   float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
     p3 += dot(p3, p3.yzx + 33.33);
@@ -772,6 +806,59 @@ const SCREEN_FRAG_SRC = `
       uv = clamp(uv + vec2(wx, wy), 0.0, 1.0);
     }
 
+    // Smart Morph Engine: Move elements within the frame towards their natural expansion
+    vec2 morphVec = vec2(0.0);
+    if (uMorphOn > 0.5 && uMorphForce > 0.005) {
+      vec2 stepM = uTexelSize * (2.5 + (1.0 - uMorphCohesion) * 4.5);
+      float mL = getLuma(texture2D(uTex, clamp(uv - vec2(stepM.x, 0.0), 0.0, 1.0)).rgb);
+      float mR = getLuma(texture2D(uTex, clamp(uv + vec2(stepM.x, 0.0), 0.0, 1.0)).rgb);
+      float mT = getLuma(texture2D(uTex, clamp(uv - vec2(0.0, stepM.y), 0.0, 1.0)).rgb);
+      float mB = getLuma(texture2D(uTex, clamp(uv + vec2(0.0, stepM.y), 0.0, 1.0)).rgb);
+      float mC = getLuma(texture2D(uTex, uv).rgb);
+
+      // Outward gradient points away from local bright cores so sampling (uv - expand) grows elements outward
+      vec2 lumGrad = vec2(mL - mR, mT - mB);
+      float gradMag = length(lumGrad);
+      vec2 gradDir = gradMag > 0.0015 ? lumGrad / gradMag : vec2(0.0);
+
+      vec2 fromCenter = uv - 0.5;
+      float radDist = length(fromCenter);
+      vec2 radialDir = radDist > 0.001 ? fromCenter / radDist : vec2(0.0);
+      vec2 tangentDir = vec2(-radialDir.y, radialDir.x);
+
+      // Edge damper keeps boundaries natural without tearing
+      float edgeMargin = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+      float boundaryEase = smoothstep(0.0, 0.14, edgeMargin);
+
+      // Breath phase locked to Golden Angle 2.39996 rad & flowRate
+      float tPhase = uTime * uMorphRate * 1.45;
+      float natPhase = 0.58 + 0.42 * sin(tPhase - radDist * 5.2 + mC * 2.4);
+
+      if (uMorphMode < 0.5) {
+        // Organic Natural Expansion: weighted luminance contour expansion + golden radial envelope
+        vec2 natDir = mix(gradDir * (0.4 + gradMag * 4.0), radialDir * (0.55 + mC * 0.65), uMorphRadial);
+        morphVec = natDir * natPhase;
+      } else if (uMorphMode < 1.5) {
+        // Gradient Flow: anisotropic expansion strictly along local element contours
+        float contrastBoost = smoothstep(0.01, 0.25, gradMag);
+        morphVec = mix(gradDir * (0.65 + contrastBoost * 1.4), radialDir * 0.4, uMorphRadial * 0.45) * (0.5 + 0.5 * sin(tPhase + mC * 3.14));
+      } else if (uMorphMode < 2.5) {
+        // Golden Phyllotaxis Spiral Expansion (phi divergence 2.399963)
+        float phiWave = sin(radDist * 14.0 - tPhase * 1.3 + atan(fromCenter.y, fromCenter.x) * 3.0);
+        vec2 spiralDir = radialDir * 0.85 + tangentDir * (0.42 * phiWave);
+        morphVec = mix(gradDir, spiralDir, 0.45 + uMorphRadial * 0.5) * (0.65 + 0.35 * cos(tPhase * 0.8));
+      } else {
+        // Harmonic Breathe: rhythmic cellular expansion preserving form
+        float breathe = 0.5 + 0.5 * sin(tPhase * 1.25 - radDist * 3.0);
+        morphVec = mix(gradDir, radialDir, 0.35 + uMorphRadial * 0.55) * breathe * (0.7 + mC * 0.6);
+      }
+
+      // Preserve crisp outer silhouette lines when edgePreserve is high
+      float silhouetteBrake = mix(1.0, 1.0 - clamp(gradMag * 3.2, 0.0, 0.72), uMorphEdgePreserve);
+      float dispAmt = uMorphForce * 0.048 * boundaryEase * silhouetteBrake;
+      uv = clamp(uv - morphVec * dispAmt, 0.0, 1.0);
+    }
+
     float tvMask = 1.0;
     if (uTvEnabled > 0.5) {
       if (uTvCurvature > 0.01) {
@@ -796,6 +883,13 @@ const SCREEN_FRAG_SRC = `
     vec4 base = texture2D(uTex, uv);
     vec4 prev = texture2D(uPrevTex, uv);
     vec3 col = base.rgb;
+
+    // Coherent Smart Morph multi-tap blending keeps expanded elements silky smooth
+    if (uMorphOn > 0.5 && uMorphForce > 0.01 && uMorphCohesion > 0.05) {
+      vec2 advUv = clamp(uv + morphVec * (uMorphForce * 0.012), 0.0, 1.0);
+      vec3 advCol = texture2D(uTex, advUv).rgb;
+      col = mix(col, (col + advCol) * 0.5, uMorphCohesion * 0.38);
+    }
 
     // Chromatic Dispersion when Liquified Screen Optical Refraction is active
     if (uLiquidScreen > 0.5 && uLiquidRefraction > 0.05) {
@@ -1031,6 +1125,45 @@ const SCREEN_FRAG_SRC = `
       col = mix(col, holoComposite * scanGate, 0.72);
     }
 
+    // Kinetic Prism Harmonizer (On-Screen Matched Aura, Contour Rim & Spectral Balance)
+    if (uHarmOn > 0.5) {
+      vec2 hc = uv - 0.5;
+      float hDist = length(hc);
+      vec2 stepUv = uTexelSize * (1.8 + uHarmShift * 5.0);
+      float lN = getLuma(texture2D(uTex, clamp(uv + vec2(0.0, stepUv.y), 0.0, 1.0)).rgb);
+      float lS = getLuma(texture2D(uTex, clamp(uv - vec2(0.0, stepUv.y), 0.0, 1.0)).rgb);
+      float lE = getLuma(texture2D(uTex, clamp(uv + vec2(stepUv.x, 0.0), 0.0, 1.0)).rgb);
+      float lW = getLuma(texture2D(uTex, clamp(uv - vec2(stepUv.x, 0.0), 0.0, 1.0)).rgb);
+      float edgeContour = clamp(length(vec2(lE - lW, lN - lS)) * 3.8, 0.0, 1.0);
+
+      vec3 prismCol = vec3(
+        texture2D(uTex, clamp(uv + hc * (0.008 * uHarmShift), 0.0, 1.0)).r,
+        col.g,
+        texture2D(uTex, clamp(uv - hc * (0.008 * uHarmShift), 0.0, 1.0)).b
+      );
+      vec3 glowTint = uHarmColor;
+      if (uHarmMode > 0.5 && uHarmMode < 1.5) {
+        // Golden Aura
+        float goldenRing = exp(-abs(hDist - 0.382) * 14.0);
+        glowTint = mix(uHarmColor, vec3(1.0, 0.68, 0.24), 0.52) * (0.55 + goldenRing * 0.9);
+      } else if (uHarmMode > 1.5 && uHarmMode < 2.5) {
+        // Prism Diffract
+        float wave = 0.5 + 0.5 * sin(uv.x * 24.0 - uv.y * 16.0 + uTime * 2.4);
+        glowTint = mix(uHarmColor, vec3(wave, 0.82 - wave * 0.35, 1.0 - wave * 0.4), 0.45);
+      } else if (uHarmMode > 2.5) {
+        // Thermal Echo
+        float heat = clamp(getLuma(col) * 1.15, 0.0, 1.0);
+        glowTint = mix(uHarmColor * 0.7, vec3(1.0, 0.42, 0.08), heat);
+      }
+
+      float radialAura = smoothstep(0.18, 0.78, hDist);
+      float vigMask = 1.0 - smoothstep(0.32, 0.92, hDist) * (0.34 * uHarmVig);
+      vec3 harmonized = mix(col, prismCol, 0.28 * uHarmStrength) +
+                        glowTint * (edgeContour * uHarmEdge * 0.42) +
+                        uHarmColor * (radialAura * uHarmStrength * 0.16);
+      col = mix(col, harmonized * vigMask, clamp(0.45 + uHarmStrength * 0.5, 0.0, 0.95));
+    }
+
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
   }
 `;
@@ -1059,6 +1192,12 @@ const LIQUID_MESH_VERT_SRC = `
   uniform float uShapeTwist;
   uniform float uShapeExplode;
   uniform float uLiquidPressure;
+
+  // Smart Morph 3D Natural Expansion
+  uniform float uSmartMorphOn;
+  uniform float uSmartMorphForce;
+  uniform float uSmartMorphRate;
+  uniform float uSmartMorphRadial;
 
   varying vec3 vWorldPos;
   varying vec3 vNormal;
@@ -1146,10 +1285,19 @@ const LIQUID_MESH_VERT_SRC = `
     }
 
     vWorldPos = worldPos;
+    // Smart Morph 3D Natural Expansion along surface normal & golden-ratio radial trajectory
+    if (uSmartMorphOn > 0.5 && uMeshKind > 0.5) {
+      float mCycle = 0.55 + 0.45 * sin(uTime * uSmartMorphRate * 1.4 - length(worldPos) * 1.6);
+      vec3 radDir3 = length(worldPos) > 0.001 ? normalize(worldPos) : rotNorm;
+      vec3 natExpandDir = normalize(mix(rotNorm, radDir3, uSmartMorphRadial));
+      float natAmt = uSmartMorphForce * mCycle * (uMeshKind > 2.5 ? 0.24 : 0.16);
+      vWorldPos += natExpandDir * natAmt;
+      waveH += natAmt;
+    }
     vNormal = rotNorm;
     vUv = aUv;
     vWaveHeight = waveH;
-    gl_Position = uMvp * vec4(worldPos, 1.0);
+    gl_Position = uMvp * vec4(vWorldPos, 1.0);
   }
 `;
 
@@ -2032,6 +2180,17 @@ export class CinemaScopeEngine {
       state.holographic.enabled ? state.holographic.reflectionMix : 0.0
     );
 
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uSmartMorphOn'),
+      state.smartMorph.enabled ? 1.0 : 0.0
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uSmartMorphForce'),
+      Math.min(1.5, state.smartMorph.expansionForce + state.smartMorph.pulseBoost * 0.45)
+    );
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uSmartMorphRate'), state.smartMorph.flowRate);
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uSmartMorphRadial'), state.smartMorph.radialBias);
+
     const posLoc = gl.getAttribLocation(prog, 'aPos');
     if (posLoc >= 0) {
       gl.bindBuffer(gl.ARRAY_BUFFER, mesh.posBuf);
@@ -2361,6 +2520,52 @@ export class CinemaScopeEngine {
     gl.uniform1f(this.getUniformLoc(gl, prog, 'uHoloParallax'), state.holographic.parallaxDepth);
     gl.uniform1f(this.getUniformLoc(gl, prog, 'uHoloScan'), state.holographic.scanlineCoherence);
     gl.uniform1f(this.getUniformLoc(gl, prog, 'uHoloCaustic'), state.holographic.causticFocus);
+
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uMorphOn'),
+      state.smartMorph.enabled ? 1.0 : 0.0
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uMorphMode'),
+      SMART_MORPH_MODE_MAP[state.smartMorph.mode] ?? 0
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uMorphForce'),
+      Math.min(1.5, state.smartMorph.expansionForce + state.smartMorph.pulseBoost * 0.45)
+    );
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uMorphCohesion'), state.smartMorph.cohesion);
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uMorphRate'), state.smartMorph.flowRate);
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uMorphRadial'), state.smartMorph.radialBias);
+    gl.uniform1f(this.getUniformLoc(gl, prog, 'uMorphEdgePreserve'), state.smartMorph.edgePreserve);
+
+    const [hR, hG, hB] = state.kineticHarmonizer.syncWithAbby
+      ? state.abbyCio.dominantRgb
+      : [sr, sg, sb];
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmOn'),
+      state.kineticHarmonizer.enabled ? 1.0 : 0.0
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmMode'),
+      KINETIC_HARM_MODE_MAP[state.kineticHarmonizer.mode] ?? 0
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmStrength'),
+      state.kineticHarmonizer.harmonyStrength
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmEdge'),
+      state.kineticHarmonizer.edgeGlow
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmShift'),
+      state.kineticHarmonizer.spectralShift
+    );
+    gl.uniform1f(
+      this.getUniformLoc(gl, prog, 'uHarmVig'),
+      state.kineticHarmonizer.vignetteBalance
+    );
+    gl.uniform3f(this.getUniformLoc(gl, prog, 'uHarmColor'), hR, hG, hB);
   }
 
   private renderMovieMode(

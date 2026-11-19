@@ -36,8 +36,12 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
   <button id="btnTv">Real TV (V)</button>
   <button id="btnToon">Toon (X)</button>
   <button id="btnCyn" class="active">Cynthetoc AI (Z)</button>
+  <button id="btnAbby" class="active">Abby CIO (B)</button>
+  <button id="btnHarm" class="active">Prism (P)</button>
   <button id="btnHolo">Holo (H)</button>
   <button id="btnStereo">Stereo 3D (Y)</button>
+  <button id="btnMorph">Morph (N)</button>
+  <button id="btnQueen">Queen Seed (J)</button>
   <button id="btnTh">Theatre (T)</button>
   <button id="btnFps">Real FPS (F)</button>
   <label style="cursor:pointer"><button type="button" onclick="document.getElementById('fileIn').click()">Load Video/Image</button><input id="fileIn" type="file" accept="video/*,image/*" style="display:none" /></label>
@@ -55,9 +59,13 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
   state.stereoscopic = Object.assign({ enabled: false, mode: 'anaglyphRedCyan', interaxial: 0.48 }, initial.stereoscopic || {});
   state.liquidBrain = Object.assign({ enabled: true, shape: 'mobiusRibbon', fusionMode: 'orbitalArray' }, initial.liquidBrain || {});
   state.holographic = Object.assign({ enabled: false, rigMode: 'pepperGhostPyramid', sliceCount: 8, reflectionMix: 0.86 }, initial.holographic || {});
+  state.smartMorph = Object.assign({ enabled: false, mode: 'organicExpand', expansionForce: 0.62, cohesion: 0.74, flowRate: 1.05, radialBias: 0.52 }, initial.smartMorph || {});
+  state.abbyCio = Object.assign({ enabled: true, logicProfile: 'balancedCinema', scanIntervalMs: 700, adaptationRate: 0.28 }, initial.abbyCio || {});
+  state.kineticHarmonizer = Object.assign({ enabled: true, mode: 'chromaticRim', harmonyStrength: 0.52, edgeGlow: 0.58, syncWithAbby: true }, initial.kineticHarmonizer || {});
+  state.daemonQueen = Object.assign({ enabled: true, autoSeed: false, seedIntervalSec: 12, maxSeededDaemons: 24, jsonFilePath: 'daemons.json' }, initial.daemonQueen || {});
   var apps = {};
   var daemons = [];
-  for (var i = 1; i <= 20; i++) daemons.push({ id: 'd' + (i < 10 ? '0'+i : i), ticks: 0, status: 'ACTIVE', efficiencyPct: 99, boostFactor: 3.0 });
+  for (var i = 1; i <= 40; i++) daemons.push({ id: 'd' + (i < 10 ? '0'+i : i), ticks: 0, status: 'ACTIVE', efficiencyPct: 99, boostFactor: 3.0 });
   var listeners = {};
   window.FractalBrain = {
     version: '2.5.0',
@@ -78,14 +86,27 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
     setStereoscopic: function(p){ Object.assign(state.stereoscopic, p || {}); },
     setLiquidBrain: function(p){ Object.assign(state.liquidBrain, p || {}); },
     setHolographic: function(p){ Object.assign(state.holographic, p || {}); },
+    setSmartMorph: function(p){ Object.assign(state.smartMorph, p || {}); },
+    setAbbyCio: function(p){ Object.assign(state.abbyCio, p || {}); },
+    setKineticHarmonizer: function(p){ Object.assign(state.kineticHarmonizer, p || {}); },
+    setDaemonQueen: function(p){ Object.assign(state.daemonQueen, p || {}); },
+    seedNewDaemon: function(spec){
+      var idx = daemons.length + 1;
+      var d = { id: 'q' + (idx < 10 ? '0'+idx : idx) + '-seed', name: spec || ('Queen Seed #' + (daemons.length - 39)), tier: 'QUEEN_SEED', parentQueenId: 'smart-daemon-queen', seededAt: new Date().toISOString(), status: 'ACTIVE', efficiencyPct: 99, boostFactor: 2.5 };
+      daemons.push(d);
+      return d;
+    },
+    getDaemonsJsonPayload: function(){
+      return { schema: 'fractal-os-daemons/v1', queenVersion: '2.5.0', savedAt: new Date().toISOString(), totalDaemons: daemons.length, baseDaemons: 40, seededDaemons: daemons.slice(40), allDaemons: daemons };
+    },
     projectHologramFromMainImage: function(rig){ state.holographic.enabled = true; if(rig) state.holographic.rigMode = rig; state.liquified3d.fluidPreset = 'liquidGlass'; state.mode = '3d'; },
     triggerLiquidPulse: function(){ state.liquified3d.enabled = true; },
-    maximizeSystem: function(){ state.fusionMatrix.enabled = true; state.fusionMatrix.autoMaximize = true; state.fusionMatrix.coherencePct = 100; state.cynthetocAi.enabled = true; daemons.forEach(function(d){ d.status = 'MAXIMIZED'; d.efficiencyPct = 100; d.boostFactor = 3.0; }); return ['All Systems 3x Overdrive']; },
+    maximizeSystem: function(){ state.fusionMatrix.enabled = true; state.fusionMatrix.autoMaximize = true; state.fusionMatrix.coherencePct = 100; state.cynthetocAi.enabled = true; state.abbyCio.enabled = true; state.kineticHarmonizer.enabled = true; daemons.forEach(function(d){ d.status = 'MAXIMIZED'; d.efficiencyPct = 100; d.boostFactor = 3.0; }); return ['All Systems 3x Overdrive']; },
     getSnapshot: function(){ return { version: '2.5.0', state: state, apps: apps, daemons: daemons }; },
     emit: function(ev, p){ (listeners[ev]||[]).forEach(function(fn){ fn(p); }); },
     on: function(ev, fn){ listeners[ev] = listeners[ev]||[]; listeners[ev].push(fn); return function(){}; }
   };
-  ['csp-collector','cinemascope-optics','cinemascope-projector','liquid-8k-upscaler','liquid-16k-upscaler','liquid-64k-upscaler','theatre-view','real-fps-engine','real-tv-engine','cinemascope-color-suite','timeline-sequencer','aimx-core-a','aimx-core-b','aimx-core-c','first-principle-loop','intelligent-scene-designer','intelligent-video-to-cartoon','intelligent-fusion-matrix','liquified-3d-studio','cynthetoc-ai','stereoscopic-3d-engine','liquid-brain-premise','holographic-projection-engine'].forEach(function(m){
+  ['csp-collector','cinemascope-optics','cinemascope-projector','liquid-8k-upscaler','liquid-16k-upscaler','liquid-64k-upscaler','theatre-view','real-fps-engine','real-tv-engine','cinemascope-color-suite','timeline-sequencer','aimx-core-a','aimx-core-b','aimx-core-c','first-principle-loop','intelligent-scene-designer','intelligent-video-to-cartoon','intelligent-fusion-matrix','liquified-3d-studio','cynthetoc-ai','stereoscopic-3d-engine','liquid-brain-premise','holographic-projection-engine','smart-morph-app','smart-daemon-queen','abby-video-cio','kinetic-prism-harmonizer'].forEach(function(m){
     window.FractalBrain.registerApp(m); window.FractalBrain.fuseApp(m);
   });
 
@@ -111,8 +132,12 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
     document.getElementById('btnTv').classList.toggle('active', !!(state.realTv && state.realTv.enabled));
     document.getElementById('btnToon').classList.toggle('active', !!(state.videoToCartoon && state.videoToCartoon.enabled));
     document.getElementById('btnCyn').classList.toggle('active', !!(state.cynthetocAi && state.cynthetocAi.enabled));
+    document.getElementById('btnAbby').classList.toggle('active', !!(state.abbyCio && state.abbyCio.enabled));
+    document.getElementById('btnHarm').classList.toggle('active', !!(state.kineticHarmonizer && state.kineticHarmonizer.enabled));
     document.getElementById('btnHolo').classList.toggle('active', !!(state.holographic && state.holographic.enabled));
     document.getElementById('btnStereo').classList.toggle('active', !!(state.stereoscopic && state.stereoscopic.enabled));
+    document.getElementById('btnMorph').classList.toggle('active', !!(state.smartMorph && state.smartMorph.enabled));
+    document.getElementById('btnQueen').textContent = 'Queen Seed (' + daemons.length + 'D) (J)';
     document.getElementById('btnTh').classList.toggle('active', !!state.theatreView);
     document.getElementById('btnFps').classList.toggle('active', !!state.realFpsMode);
   }
@@ -124,8 +149,18 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
   document.getElementById('btnTv').onclick = function(){ state.realTv.enabled = !state.realTv.enabled; syncUi(); };
   document.getElementById('btnToon').onclick = function(){ state.videoToCartoon.enabled = !state.videoToCartoon.enabled; syncUi(); };
   document.getElementById('btnCyn').onclick = function(){ state.cynthetocAi.enabled = !state.cynthetocAi.enabled; syncUi(); };
+  document.getElementById('btnAbby').onclick = function(){ state.abbyCio.enabled = !state.abbyCio.enabled; syncUi(); };
+  document.getElementById('btnHarm').onclick = function(){ state.kineticHarmonizer.enabled = !state.kineticHarmonizer.enabled; syncUi(); };
   document.getElementById('btnHolo').onclick = function(){ state.holographic.enabled = !state.holographic.enabled; syncUi(); };
   document.getElementById('btnStereo').onclick = function(){ state.stereoscopic.enabled = !state.stereoscopic.enabled; syncUi(); };
+  document.getElementById('btnMorph').onclick = function(){ state.smartMorph.enabled = !state.smartMorph.enabled; syncUi(); };
+  document.getElementById('btnQueen').onclick = function(){
+    window.FractalBrain.seedNewDaemon();
+    var blob = new Blob([JSON.stringify(window.FractalBrain.getDaemonsJsonPayload(), null, 2)], { type: 'application/json' });
+    var u = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = u; a.download = 'daemons.json'; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(u); }, 500);
+    syncUi();
+  };
   document.getElementById('btnTh').onclick = function(){ state.theatreView = !state.theatreView; syncUi(); };
   document.getElementById('btnFps').onclick = function(){ state.realFpsMode = !state.realFpsMode; syncUi(); };
   window.addEventListener('keydown', function(e){
@@ -139,8 +174,12 @@ export function exportStandaloneStudioHtml(snapshot: FractalBrainSnapshot): stri
     else if (k === 'v') document.getElementById('btnTv').click();
     else if (k === 'x') document.getElementById('btnToon').click();
     else if (k === 'z') document.getElementById('btnCyn').click();
+    else if (k === 'b') document.getElementById('btnAbby').click();
+    else if (k === 'p') document.getElementById('btnHarm').click();
     else if (k === 'h') document.getElementById('btnHolo').click();
     else if (k === 'y') document.getElementById('btnStereo').click();
+    else if (k === 'n') document.getElementById('btnMorph').click();
+    else if (k === 'j') document.getElementById('btnQueen').click();
     else if (k === 't') document.getElementById('btnTh').click();
     else if (k === 'f') document.getElementById('btnFps').click();
   });

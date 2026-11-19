@@ -27,6 +27,21 @@ export type HologramRigMode =
   | 'volumetricSliceStack'
   | 'liquidGlassPrism'
   | 'floatingCausticField';
+export type SmartMorphModeId =
+  | 'organicExpand'
+  | 'gradientFlow'
+  | 'goldenSpiral'
+  | 'harmonicBreathe';
+export type AbbyLogicProfile =
+  | 'balancedCinema'
+  | 'reactiveStage'
+  | 'editorialMatch'
+  | 'holoPrism';
+export type KineticHarmMode =
+  | 'chromaticRim'
+  | 'goldenAura'
+  | 'prismDiffract'
+  | 'thermalEcho';
 
 export interface ColorGradingState {
   exposure: number;
@@ -154,6 +169,71 @@ export interface HolographicProjectionConfig {
   autoRotate: boolean;
 }
 
+export interface SmartMorphConfig {
+  enabled: boolean;
+  mode: SmartMorphModeId;
+  expansionForce: number; // 0.0 to 1.0 natural outward force along gradients/normals
+  cohesion: number; // 0.0 to 1.0 keeps subject form intact while expanding
+  flowRate: number; // 0.1 to 2.5 oscillation / expansion cycle speed
+  radialBias: number; // 0.0 to 1.0 blend between local edge gradient & golden-ratio radial vectors
+  edgePreserve: number; // 0.0 to 1.0 silhouette anchor preservation
+  pulseBoost: number; // transient burst when Natural Expansion is triggered
+}
+
+export interface DaemonQueenConfig {
+  enabled: boolean;
+  autoSeed: boolean;
+  seedIntervalSec: number; // 4 to 60 seconds
+  maxSeededDaemons: number; // cap on child daemons spawned by Queen
+  adaptiveFitness: number; // 0 to 100 computed swarm fitness
+  lastSeededId: string | null;
+  lastSavedAt: string | null;
+  jsonFilePath: string;
+}
+
+export interface AbbyFrameMetrics {
+  avgLuma: number;
+  contrastSpan: number;
+  warmthBias: number;
+  saturationLevel: number;
+  motionEnergy: number;
+  edgeDensity: number;
+  dominantRgb: [number, number, number];
+  dominantHex: string;
+}
+
+export interface AbbyVideoCioConfig {
+  enabled: boolean;
+  logicProfile: AbbyLogicProfile;
+  scanIntervalMs: number; // 350 to 3000 ms
+  adaptationRate: number; // 0.1 to 1.0 lerp weight
+  matchGrading: boolean;
+  matchSceneAndLiquid: boolean;
+  matchMorphAndOptics: boolean;
+  avgLuma: number;
+  contrastSpan: number;
+  warmthBias: number;
+  saturationLevel: number;
+  motionEnergy: number;
+  edgeDensity: number;
+  dominantRgb: [number, number, number];
+  dominantHex: string;
+  sceneClass: string;
+  lastDecision: string;
+  decisionsCount: number;
+}
+
+export interface KineticHarmonizerConfig {
+  enabled: boolean;
+  mode: KineticHarmMode;
+  harmonyStrength: number; // 0.0 to 1.0
+  edgeGlow: number; // 0.0 to 1.0
+  spectralShift: number; // 0.0 to 1.0
+  vignetteBalance: number; // 0.0 to 1.0
+  syncWithAbby: boolean;
+  matchedColorRgb: [number, number, number];
+}
+
 export interface TimelineMarker {
   id: string;
   time: number;
@@ -180,7 +260,7 @@ export interface FractalAppModule {
 export interface SovereignDaemon {
   id: string;
   name: string;
-  tier: 'CORE' | 'OPTICS' | 'INTELLIGENCE' | 'SUSTAIN';
+  tier: 'CORE' | 'OPTICS' | 'INTELLIGENCE' | 'SUSTAIN' | 'MORPH' | 'QUEEN_SEED' | 'CIO' | 'HARMONIC';
   status: 'ACTIVE' | 'MAXIMIZED' | 'SUSTAINING' | 'SYNCED' | 'IDLE';
   ticks: number;
   lastTickAt: number;
@@ -188,6 +268,23 @@ export interface SovereignDaemon {
   efficiencyPct: number;
   boostFactor: number;
   telemetry: Record<string, string | number | boolean>;
+  role?: string;
+  parentQueenId?: string;
+  seededAt?: string;
+  seedVector?: [number, number, number];
+  autoSeeded?: boolean;
+}
+
+export interface SerializedDaemonsPayload {
+  schema: 'fractal-os-daemons/v1';
+  queenVersion: string;
+  savedAt: string;
+  totalDaemons: number;
+  baseDaemons: number;
+  seededCount: number;
+  queenConfig: DaemonQueenConfig;
+  seededDaemons: SovereignDaemon[];
+  allDaemons: SovereignDaemon[];
 }
 
 export interface FractalBrainEvent {
@@ -225,6 +322,10 @@ export interface FractalStudioState {
   stereoscopic: Stereoscopic3dConfig;
   liquidBrain: LiquidBrainConfig;
   holographic: HolographicProjectionConfig;
+  smartMorph: SmartMorphConfig;
+  daemonQueen: DaemonQueenConfig;
+  abbyCio: AbbyVideoCioConfig;
+  kineticHarmonizer: KineticHarmonizerConfig;
   mediaSourceName: string;
   mediaType: 'procedural' | 'video' | 'image';
   duration: number;
@@ -265,6 +366,11 @@ export interface StudioCommandPayload {
   stereoscopic?: Partial<Stereoscopic3dConfig>;
   liquidBrain?: Partial<LiquidBrainConfig>;
   holographic?: Partial<HolographicProjectionConfig>;
+  smartMorph?: Partial<SmartMorphConfig>;
+  daemonQueen?: Partial<DaemonQueenConfig>;
+  seedNewDaemon?: { specialization?: string };
+  abbyCio?: Partial<AbbyVideoCioConfig>;
+  kineticHarmonizer?: Partial<KineticHarmonizerConfig>;
   projectHologram?: boolean;
   stage3d?: Partial<FractalStudioState['stage3d']>;
   seekSeconds?: number;
@@ -304,6 +410,17 @@ export interface FractalBrainAPI {
   setStereoscopic: (patch: Partial<Stereoscopic3dConfig>) => void;
   setLiquidBrain: (patch: Partial<LiquidBrainConfig>) => void;
   setHolographic: (patch: Partial<HolographicProjectionConfig>) => void;
+  setSmartMorph: (patch: Partial<SmartMorphConfig>) => void;
+  triggerNaturalExpansion: (strength?: number) => void;
+  setDaemonQueen: (patch: Partial<DaemonQueenConfig>) => void;
+  seedNewDaemon: (specialization?: string, autoSeeded?: boolean) => SovereignDaemon | null;
+  removeSeededDaemon: (id: string) => boolean;
+  resetSeededDaemons: () => void;
+  hydrateSeededDaemons: (seededList: SovereignDaemon[], savedAt?: string | null) => void;
+  getDaemonsJsonPayload: () => SerializedDaemonsPayload;
+  setAbbyCio: (patch: Partial<AbbyVideoCioConfig>) => void;
+  evaluateAbbyLogic: (metrics: AbbyFrameMetrics, forceFullStep?: boolean) => string;
+  setKineticHarmonizer: (patch: Partial<KineticHarmonizerConfig>) => void;
   projectHologramFromMainImage: (rigMode?: HologramRigMode) => void;
   fuseProjectedApps: (appIds?: string[], targetShape?: AppShapeTopologyId) => void;
   alterAppShape: (
@@ -457,6 +574,60 @@ export const DEFAULT_HOLOGRAPHIC: HolographicProjectionConfig = {
   autoRotate: true,
 };
 
+export const DEFAULT_SMART_MORPH: SmartMorphConfig = {
+  enabled: false,
+  mode: 'organicExpand',
+  expansionForce: 0.62,
+  cohesion: 0.74,
+  flowRate: 1.05,
+  radialBias: 0.52,
+  edgePreserve: 0.68,
+  pulseBoost: 0,
+};
+
+export const DEFAULT_DAEMON_QUEEN: DaemonQueenConfig = {
+  enabled: true,
+  autoSeed: false,
+  seedIntervalSec: 12,
+  maxSeededDaemons: 24,
+  adaptiveFitness: 98,
+  lastSeededId: null,
+  lastSavedAt: null,
+  jsonFilePath: 'daemons.json',
+};
+
+export const DEFAULT_ABBY_CIO: AbbyVideoCioConfig = {
+  enabled: true,
+  logicProfile: 'balancedCinema',
+  scanIntervalMs: 700,
+  adaptationRate: 0.42,
+  matchGrading: true,
+  matchSceneAndLiquid: true,
+  matchMorphAndOptics: true,
+  avgLuma: 0.36,
+  contrastSpan: 0.64,
+  warmthBias: 0.14,
+  saturationLevel: 0.48,
+  motionEnergy: 0.12,
+  edgeDensity: 0.24,
+  dominantRgb: [1.0, 0.42, 0.0],
+  dominantHex: '#ff6a00',
+  sceneClass: 'Warm Amber Scope',
+  lastDecision: 'Initial warm scope harmony locked',
+  decisionsCount: 0,
+};
+
+export const DEFAULT_KINETIC_HARMONIZER: KineticHarmonizerConfig = {
+  enabled: true,
+  mode: 'chromaticRim',
+  harmonyStrength: 0.46,
+  edgeGlow: 0.38,
+  spectralShift: 0.32,
+  vignetteBalance: 0.35,
+  syncWithAbby: true,
+  matchedColorRgb: [1.0, 0.42, 0.0],
+};
+
 const REQUIRED_MODULES: Array<{ id: string; name: string; role: string }> = [
   { id: 'csp-collector', name: 'CSP Collector', role: 'Primary constraint & thermal telemetry collector' },
   { id: 'cinemascope-optics', name: 'CinemaScope Optics', role: '2.39x anamorphic desqueeze, grain & halation optics' },
@@ -475,12 +646,16 @@ const REQUIRED_MODULES: Array<{ id: string; name: string; role: string }> = [
   { id: 'first-principle-loop', name: 'First Principle Loop', role: 'Self-healing watchdog & zero-stall loop' },
   { id: 'intelligent-scene-designer', name: 'Intelligent Scene Designer', role: 'Procedural fractal architecture, lighting & atmosphere synthesizer' },
   { id: 'intelligent-video-to-cartoon', name: 'Intelligent Video to Cartoon', role: 'Real-time GLSL Sobel ink outlines, cel quantization & comic halftone' },
-  { id: 'intelligent-fusion-matrix', name: 'Intelligent Fusion Matrix', role: 'Cross-app neural synergy bus connecting all 22 modules & 20 daemons' },
+  { id: 'intelligent-fusion-matrix', name: 'Intelligent Fusion Matrix', role: 'Cross-app neural synergy bus connecting all 27 modules & 40+ daemons' },
   { id: 'liquified-3d-studio', name: 'Liquified 3D Studio', role: 'Volumetric solid/ferrofluid 3D meshes, Fresnel video reflections & optical refraction' },
   { id: 'cynthetoc-ai', name: 'Cynthetoc AI', role: 'Synthetic neural reillumination, anisotropic edge supersampling & autonomous frame director' },
   { id: 'stereoscopic-3d-engine', name: 'Stereoscopic 3D Separation', role: 'Analog 3D dual-eye optical separation & parallax synthesizer' },
   { id: 'liquid-brain-premise', name: 'Liquid Brain Topology', role: 'Hydrodynamic app-to-3D-shape projection, fusion & morphing engine' },
   { id: 'holographic-projection-engine', name: 'Holographic Projection Engine', role: 'Liquid glass reflection & main-image volumetric hologram synthesis engine' },
+  { id: 'smart-morph-app', name: 'Smart Morph Engine', role: 'Moves elements within a frame & 3D stage towards their natural expansion vectors' },
+  { id: 'smart-daemon-queen', name: 'Smart Daemon Queen', role: 'Autonomous queen intelligence seeding specialized daemons and persisting swarm JSON' },
+  { id: 'abby-video-cio', name: 'Abby Auto Video CIO', role: 'Autonomous on-screen video CIO analyzing live frames and adapting designs with its own logic' },
+  { id: 'kinetic-prism-harmonizer', name: 'Kinetic Prism Harmonizer', role: 'Spectral contour rim & radial prism aura matching live on-screen palette and energy' },
 ];
 
 const DAEMON_DEFINITIONS: Array<{
@@ -508,7 +683,29 @@ const DAEMON_DEFINITIONS: Array<{
   { id: 'd18-bandwidth-maximizer', name: 'DPR & Frame-Time Maximizer', tier: 'SUSTAIN' },
   { id: 'd19-aimx-triad-sync', name: 'AIMX Core A/B/C Triad Sync', tier: 'INTELLIGENCE' },
   { id: 'd20-harmony-maximizer', name: 'Global Synergy & Output Maximizer', tier: 'SUSTAIN' },
+  { id: 'd21-abby-frame-sampler', name: 'Abby Pixel Grid & Luma Sampler', tier: 'CIO' },
+  { id: 'd22-abby-histogram-engine', name: 'Abby Dynamic Contrast Span Engine', tier: 'CIO' },
+  { id: 'd23-abby-chroma-classifier', name: 'Abby Warm/Cool Chroma Classifier', tier: 'CIO' },
+  { id: 'd24-abby-motion-oracle', name: 'Abby Temporal Motion Energy Oracle', tier: 'CIO' },
+  { id: 'd25-abby-edge-topology', name: 'Abby Spatial Edge Density Analyzer', tier: 'CIO' },
+  { id: 'd26-abby-scene-matcher', name: 'Abby Scene Theme & Ring Architect', tier: 'CIO' },
+  { id: 'd27-abby-grading-pilot', name: 'Abby Auto-Exposure & LUT Pilot', tier: 'CIO' },
+  { id: 'd28-abby-liquid-director', name: 'Abby Ferrofluid & Fresnel Director', tier: 'CIO' },
+  { id: 'd29-abby-morph-pacemaker', name: 'Abby Smart Morph Expansion Pacemaker', tier: 'CIO' },
+  { id: 'd30-abby-holo-synthesizer', name: 'Abby Liquid Glass Hologram Matcher', tier: 'CIO' },
+  { id: 'd31-prism-harmonic-core', name: 'Kinetic Prism Harmonizer Core', tier: 'HARMONIC' },
+  { id: 'd32-spectral-rim-tracer', name: 'Spectral Contour & Edge Glow Tracer', tier: 'HARMONIC' },
+  { id: 'd33-dominant-hue-tracker', name: 'Dominant Screen Hue Lock Tracker', tier: 'HARMONIC' },
+  { id: 'd34-golden-aura-balancer', name: 'Golden-Ratio Radial Vignette Balancer', tier: 'HARMONIC' },
+  { id: 'd35-caustic-diffraction', name: 'Prism Diffraction & Streak Coupler', tier: 'HARMONIC' },
+  { id: 'd36-stereo-comfort-guard', name: 'Abby Stereo Parallax Comfort Guard', tier: 'SUSTAIN' },
+  { id: 'd37-cadence-smooth-lerp', name: 'Temporal Design Lerp Anti-Flicker Guard', tier: 'SUSTAIN' },
+  { id: 'd38-memory-canvas-sampler', name: 'Offscreen 64x36 Vision Buffer Guard', tier: 'SUSTAIN' },
+  { id: 'd39-queen-cio-bridge', name: 'Daemon Queen <-> Abby CIO Bridge', tier: 'INTELLIGENCE' },
+  { id: 'd40-cio-swarm-arbiter', name: '40-Daemon Consensus & Design Arbiter', tier: 'SUSTAIN' },
 ];
+
+export const BASE_DAEMON_COUNT = DAEMON_DEFINITIONS.length;
 
 function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
@@ -552,6 +749,16 @@ function createFractalBrain(): FractalBrainAPI {
       projectedApps: [...DEFAULT_LIQUID_BRAIN.projectedApps],
     },
     holographic: { ...DEFAULT_HOLOGRAPHIC },
+    smartMorph: { ...DEFAULT_SMART_MORPH },
+    daemonQueen: { ...DEFAULT_DAEMON_QUEEN },
+    abbyCio: {
+      ...DEFAULT_ABBY_CIO,
+      dominantRgb: [...DEFAULT_ABBY_CIO.dominantRgb] as [number, number, number],
+    },
+    kineticHarmonizer: {
+      ...DEFAULT_KINETIC_HARMONIZER,
+      matchedColorRgb: [...DEFAULT_KINETIC_HARMONIZER.matchedColorRgb] as [number, number, number],
+    },
     mediaSourceName: 'MicroFractal 2.39:1 Calibration Stream',
     mediaType: 'procedural',
     duration: 120,
@@ -626,12 +833,26 @@ function createFractalBrain(): FractalBrainAPI {
         projectedApps: [...state.liquidBrain.projectedApps],
       },
       holographic: { ...state.holographic },
+      smartMorph: { ...state.smartMorph },
+      daemonQueen: { ...state.daemonQueen },
+      abbyCio: {
+        ...state.abbyCio,
+        dominantRgb: [...state.abbyCio.dominantRgb] as [number, number, number],
+      },
+      kineticHarmonizer: {
+        ...state.kineticHarmonizer,
+        matchedColorRgb: [...state.kineticHarmonizer.matchedColorRgb] as [number, number, number],
+      },
       abLoop: { ...state.abLoop },
       markers: state.markers.map((m) => ({ ...m })),
       stage3d: { ...state.stage3d },
     },
     apps: getApps(),
-    daemons: daemons.map((d) => ({ ...d, telemetry: { ...d.telemetry } })),
+    daemons: daemons.map((d) => ({
+      ...d,
+      seedVector: d.seedVector ? [...d.seedVector] as [number, number, number] : undefined,
+      telemetry: { ...d.telemetry },
+    })),
     recentEvents: eventLog.slice(-24),
   });
 
@@ -819,6 +1040,18 @@ function createFractalBrain(): FractalBrainAPI {
       } else if (keyOrPatch === 'holographic' && typeof value === 'object' && value !== null) {
         state.holographic = { ...state.holographic, ...(value as Partial<HolographicProjectionConfig>) };
         propagateFusionSynergy();
+      } else if (keyOrPatch === 'smartMorph' && typeof value === 'object' && value !== null) {
+        state.smartMorph = { ...state.smartMorph, ...(value as Partial<SmartMorphConfig>) };
+        propagateFusionSynergy();
+      } else if (keyOrPatch === 'daemonQueen' && typeof value === 'object' && value !== null) {
+        state.daemonQueen = { ...state.daemonQueen, ...(value as Partial<DaemonQueenConfig>) };
+      } else if (keyOrPatch === 'abbyCio' && typeof value === 'object' && value !== null) {
+        state.abbyCio = { ...state.abbyCio, ...(value as Partial<AbbyVideoCioConfig>) };
+      } else if (keyOrPatch === 'kineticHarmonizer' && typeof value === 'object' && value !== null) {
+        state.kineticHarmonizer = {
+          ...state.kineticHarmonizer,
+          ...(value as Partial<KineticHarmonizerConfig>),
+        };
       } else if (keyOrPatch === 'stage3d' && typeof value === 'object' && value !== null) {
         state.stage3d = { ...state.stage3d, ...(value as Partial<FractalStudioState['stage3d']>) };
       } else if (keyOrPatch === 'abLoop' && typeof value === 'object' && value !== null) {
@@ -876,6 +1109,18 @@ function createFractalBrain(): FractalBrainAPI {
       if (keyOrPatch.holographic) {
         state.holographic = { ...state.holographic, ...keyOrPatch.holographic };
       }
+      if (keyOrPatch.smartMorph) {
+        state.smartMorph = { ...state.smartMorph, ...keyOrPatch.smartMorph };
+      }
+      if (keyOrPatch.daemonQueen) {
+        state.daemonQueen = { ...state.daemonQueen, ...keyOrPatch.daemonQueen };
+      }
+      if (keyOrPatch.abbyCio) {
+        state.abbyCio = { ...state.abbyCio, ...keyOrPatch.abbyCio };
+      }
+      if (keyOrPatch.kineticHarmonizer) {
+        state.kineticHarmonizer = { ...state.kineticHarmonizer, ...keyOrPatch.kineticHarmonizer };
+      }
       if (keyOrPatch.stage3d) {
         state.stage3d = { ...state.stage3d, ...keyOrPatch.stage3d };
       }
@@ -894,6 +1139,10 @@ function createFractalBrain(): FractalBrainAPI {
         stereoscopic: _st,
         liquidBrain: _lb,
         holographic: _hg,
+        smartMorph: _sm,
+        daemonQueen: _dq,
+        abbyCio: _ab,
+        kineticHarmonizer: _kh,
         stage3d: _s,
         abLoop: _a,
         ...rest
@@ -909,7 +1158,8 @@ function createFractalBrain(): FractalBrainAPI {
         keyOrPatch.liquified3d ||
         keyOrPatch.cynthetocAi ||
         keyOrPatch.liquidBrain ||
-        keyOrPatch.holographic
+        keyOrPatch.holographic ||
+        keyOrPatch.smartMorph
       ) {
         propagateFusionSynergy();
       }
@@ -1000,6 +1250,468 @@ function createFractalBrain(): FractalBrainAPI {
   const setHolographic = (patch: Partial<HolographicProjectionConfig>) => {
     set('holographic', patch);
     emit('holographic:updated', state.holographic);
+  };
+
+  const setSmartMorph = (patch: Partial<SmartMorphConfig>) => {
+    set('smartMorph', patch);
+    emit('smartmorph:updated', state.smartMorph);
+  };
+
+  const triggerNaturalExpansion = (strength = 1.0) => {
+    state.smartMorph.enabled = true;
+    state.smartMorph.pulseBoost = clamp(strength, 0.2, 1.5);
+    state.smartMorph.expansionForce = clamp(Math.max(0.68, state.smartMorph.expansionForce), 0, 1);
+    propagateFusionSynergy();
+    emit('smartmorph:expanded', {
+      mode: state.smartMorph.mode,
+      expansionForce: state.smartMorph.expansionForce,
+      pulseBoost: state.smartMorph.pulseBoost,
+    });
+  };
+
+  const setDaemonQueen = (patch: Partial<DaemonQueenConfig>) => {
+    set('daemonQueen', patch);
+    emit('queen:updated', state.daemonQueen);
+  };
+
+  const setAbbyCio = (patch: Partial<AbbyVideoCioConfig>) => {
+    set('abbyCio', patch);
+    emit('abby:updated', state.abbyCio);
+  };
+
+  const setKineticHarmonizer = (patch: Partial<KineticHarmonizerConfig>) => {
+    set('kineticHarmonizer', patch);
+    emit('harmonizer:updated', state.kineticHarmonizer);
+  };
+
+  const lerpNum = (a: number, b: number, t: number) => a + (b - a) * t;
+
+  const evaluateAbbyLogic = (metrics: AbbyFrameMetrics, forceFullStep = false): string => {
+    const abby = state.abbyCio;
+    abby.avgLuma = Number(metrics.avgLuma.toFixed(3));
+    abby.contrastSpan = Number(metrics.contrastSpan.toFixed(3));
+    abby.warmthBias = Number(metrics.warmthBias.toFixed(3));
+    abby.saturationLevel = Number(metrics.saturationLevel.toFixed(3));
+    abby.motionEnergy = Number(metrics.motionEnergy.toFixed(3));
+    abby.edgeDensity = Number(metrics.edgeDensity.toFixed(3));
+    abby.dominantRgb = [...metrics.dominantRgb] as [number, number, number];
+    abby.dominantHex = metrics.dominantHex;
+
+    if (!abby.enabled && !forceFullStep) {
+      return abby.lastDecision;
+    }
+
+    const alpha = forceFullStep ? 1.0 : clamp(abby.adaptationRate, 0.1, 1.0);
+    const prof = abby.logicProfile;
+
+    // Abby's autonomous heuristic decision tree matching design to live on-screen content
+    let sceneClass = 'Balanced Scope Harmony';
+    let targetTheme: SceneThemeId = 'obsidianAmber';
+    let targetLut: LutPresetId = 'kodak2383';
+    let targetLiquid: LiquidPresetId = 'moltenAmber';
+    let targetHarmMode: KineticHarmMode = 'chromaticRim';
+    let targetMorphMode: SmartMorphModeId = 'organicExpand';
+
+    let targetExposure = clamp((0.44 - metrics.avgLuma) * 0.72, -0.45, 0.55);
+    let targetContrast = clamp(1.02 + (0.62 - metrics.contrastSpan) * 0.35 + metrics.edgeDensity * 0.14, 0.92, 1.38);
+    let targetSaturation = clamp(1.0 + (0.45 - metrics.saturationLevel) * 0.32 + metrics.motionEnergy * 0.16, 0.75, 1.42);
+    let targetTemp = clamp(metrics.warmthBias * 0.24, -0.35, 0.35);
+    let targetFlare = clamp(0.24 + metrics.motionEnergy * 0.65 + (metrics.avgLuma > 0.58 ? 0.14 : 0), 0.15, 0.88);
+    let targetSweep = clamp(0.45 + metrics.motionEnergy * 0.5 + metrics.edgeDensity * 0.25, 0.25, 0.98);
+    let targetAtmos = clamp(0.16 + metrics.motionEnergy * 0.22 + (1 - metrics.contrastSpan) * 0.12, 0.12, 0.48);
+    let targetComplexity = clamp(Math.round(4 + metrics.edgeDensity * 3.5 + metrics.motionEnergy * 2.5), 3, 8);
+    let targetMorphForce = clamp(0.32 + metrics.motionEnergy * 0.55 + metrics.edgeDensity * 0.22, 0.2, 0.92);
+
+    if (metrics.motionEnergy > 0.16 && metrics.contrastSpan > 0.55) {
+      sceneClass = 'Kinetic Action Flare';
+      targetTheme = metrics.warmthBias >= 0 ? 'solarReactor' : 'neonBroadcast';
+      targetLut = 'tealAmber';
+      targetLiquid = metrics.warmthBias >= 0 ? 'moltenAmber' : 'iridescentPlasma';
+      targetHarmMode = 'prismDiffract';
+      targetMorphMode = 'gradientFlow';
+    } else if (metrics.avgLuma < 0.26 && metrics.contrastSpan > 0.45) {
+      sceneClass = 'Noir Shadow Scope';
+      targetTheme = metrics.warmthBias > 0.05 ? 'crimsonNoir' : 'obsidianAmber';
+      targetLut = prof === 'editorialMatch' ? 'noirSilver' : 'bleachBypass';
+      targetLiquid = 'ferrofluidObsidian';
+      targetHarmMode = 'thermalEcho';
+      targetMorphMode = 'harmonicBreathe';
+      targetExposure = clamp(targetExposure + 0.12, -0.35, 0.62);
+    } else if (metrics.warmthBias > 0.07) {
+      sceneClass = 'Warm Amber Scope';
+      targetTheme = metrics.avgLuma > 0.46 ? 'solarReactor' : 'obsidianAmber';
+      targetLut = 'kodak2383';
+      targetLiquid = 'moltenAmber';
+      targetHarmMode = 'goldenAura';
+      targetMorphMode = 'organicExpand';
+    } else if (metrics.warmthBias < -0.06) {
+      sceneClass = 'Cool Cybernetic Prism';
+      targetTheme = metrics.saturationLevel > 0.42 ? 'neonBroadcast' : 'emeraldMatrix';
+      targetLut = 'tealAmber';
+      targetLiquid = prof === 'holoPrism' ? 'liquidGlass' : 'iridescentPlasma';
+      targetHarmMode = 'chromaticRim';
+      targetMorphMode = 'goldenSpiral';
+    } else if (metrics.edgeDensity > 0.24 && metrics.saturationLevel > 0.34) {
+      sceneClass = 'Chromatic Hyper-Detail';
+      targetTheme = 'emeraldMatrix';
+      targetLut = 'kodak2383';
+      targetLiquid = 'mercuryChrome';
+      targetHarmMode = 'prismDiffract';
+      targetMorphMode = 'goldenSpiral';
+    }
+
+    if (prof === 'reactiveStage') {
+      targetSweep = clamp(targetSweep * 1.18, 0.3, 1.0);
+      targetMorphForce = clamp(targetMorphForce * 1.15, 0.25, 1.0);
+      targetFlare = clamp(targetFlare + 0.12, 0.2, 0.95);
+    } else if (prof === 'editorialMatch') {
+      targetAtmos = clamp(targetAtmos * 0.72, 0.08, 0.32);
+      targetFlare = clamp(targetFlare * 0.75, 0.12, 0.6);
+    } else if (prof === 'holoPrism') {
+      targetLiquid = 'liquidGlass';
+      targetHarmMode = 'prismDiffract';
+    }
+
+    if (abby.matchGrading) {
+      state.grading.exposure = Number(lerpNum(state.grading.exposure, targetExposure, alpha).toFixed(3));
+      state.grading.contrast = Number(lerpNum(state.grading.contrast, targetContrast, alpha).toFixed(3));
+      state.grading.saturation = Number(lerpNum(state.grading.saturation, targetSaturation, alpha).toFixed(3));
+      state.grading.temperature = Number(lerpNum(state.grading.temperature, targetTemp, alpha).toFixed(3));
+      state.grading.lut = targetLut;
+    }
+
+    if (abby.matchSceneAndLiquid) {
+      state.sceneDesigner.theme = targetTheme;
+      state.sceneDesigner.fractalComplexity = targetComplexity;
+      state.sceneDesigner.sweepIntensity = Number(lerpNum(state.sceneDesigner.sweepIntensity, targetSweep, alpha).toFixed(3));
+      state.sceneDesigner.atmosphereBlend = Number(lerpNum(state.sceneDesigner.atmosphereBlend, targetAtmos, alpha).toFixed(3));
+      state.liquified3d.fluidPreset = targetLiquid;
+      state.liquified3d.chromeFresnel = Number(
+        lerpNum(state.liquified3d.chromeFresnel, clamp(0.62 + metrics.contrastSpan * 0.34, 0.4, 1), alpha).toFixed(3)
+      );
+      if (metrics.motionEnergy > 0.22 && state.liquified3d.pulseEnergy < 0.25) {
+        state.liquified3d.pulseEnergy = clamp(0.32 + metrics.motionEnergy * 0.4, 0.2, 0.85);
+      }
+      if (state.cynthetocAi.enabled) {
+        state.cynthetocAi.relightIntensity = Number(
+          lerpNum(state.cynthetocAi.relightIntensity, clamp(0.35 + (1 - metrics.avgLuma) * 0.55, 0.25, 0.92), alpha).toFixed(3)
+        );
+        state.cynthetocAi.lastDirective = `Abby: ${sceneClass}`;
+      }
+    }
+
+    if (abby.matchMorphAndOptics) {
+      state.anamorphicFlare = Number(lerpNum(state.anamorphicFlare, targetFlare, alpha).toFixed(3));
+      if (state.smartMorph.enabled || prof === 'reactiveStage') {
+        if (prof === 'reactiveStage') state.smartMorph.enabled = true;
+        state.smartMorph.mode = targetMorphMode;
+        state.smartMorph.expansionForce = Number(lerpNum(state.smartMorph.expansionForce, targetMorphForce, alpha).toFixed(3));
+        state.smartMorph.flowRate = Number(lerpNum(state.smartMorph.flowRate, clamp(0.8 + metrics.motionEnergy * 1.8, 0.5, 2.2), alpha).toFixed(2));
+      }
+      if (prof === 'holoPrism' && state.holographic.enabled) {
+        state.holographic.reflectionMix = Number(lerpNum(state.holographic.reflectionMix, clamp(0.7 + metrics.contrastSpan * 0.28, 0.5, 1), alpha).toFixed(2));
+        state.holographic.chromaticSplit = Number(lerpNum(state.holographic.chromaticSplit, clamp(0.35 + metrics.saturationLevel * 0.55, 0.2, 0.95), alpha).toFixed(2));
+      }
+    }
+
+    if (state.kineticHarmonizer.syncWithAbby) {
+      state.kineticHarmonizer.mode = targetHarmMode;
+      state.kineticHarmonizer.matchedColorRgb = [
+        Number(lerpNum(state.kineticHarmonizer.matchedColorRgb[0], metrics.dominantRgb[0], alpha).toFixed(3)),
+        Number(lerpNum(state.kineticHarmonizer.matchedColorRgb[1], metrics.dominantRgb[1], alpha).toFixed(3)),
+        Number(lerpNum(state.kineticHarmonizer.matchedColorRgb[2], metrics.dominantRgb[2], alpha).toFixed(3)),
+      ];
+      state.kineticHarmonizer.harmonyStrength = Number(
+        lerpNum(state.kineticHarmonizer.harmonyStrength, clamp(0.32 + metrics.saturationLevel * 0.42 + metrics.motionEnergy * 0.28, 0.25, 0.92), alpha).toFixed(3)
+      );
+      state.kineticHarmonizer.edgeGlow = Number(
+        lerpNum(state.kineticHarmonizer.edgeGlow, clamp(0.24 + metrics.edgeDensity * 0.56, 0.18, 0.9), alpha).toFixed(3)
+      );
+    }
+
+    propagateFusionSynergy();
+
+    const evStr = `${state.grading.exposure >= 0 ? '+' : ''}${state.grading.exposure.toFixed(2)}EV`;
+    const decision = `${sceneClass} -> ${targetTheme}/${targetLut} (${evStr}, ${metrics.dominantHex})`;
+    abby.sceneClass = sceneClass;
+    abby.lastDecision = decision;
+    abby.decisionsCount += 1;
+
+    emit('abby:decision', { sceneClass, decision, metrics, count: abby.decisionsCount });
+    return decision;
+  };
+
+  const QUEEN_ARCHETYPES: Array<{
+    slug: string;
+    name: string;
+    tier: SovereignDaemon['tier'];
+    role: string;
+    condition: () => boolean;
+  }> = [
+    {
+      slug: 'morph-field-weaver',
+      name: 'Morph Field Expansion Weaver',
+      tier: 'MORPH',
+      role: 'Tracks luminance gradients & moves frame elements along natural phyllotaxis expansion vectors',
+      condition: () => state.smartMorph.enabled,
+    },
+    {
+      slug: 'phyllotaxis-kernel',
+      name: 'Golden Phyllotaxis Growth Kernel',
+      tier: 'MORPH',
+      role: 'Balances radial golden-ratio growth divergence with silhouette edge preservation',
+      condition: () => state.smartMorph.enabled,
+    },
+    {
+      slug: 'holo-caustic-keeper',
+      name: 'Hologram Caustic Keeper',
+      tier: 'OPTICS',
+      role: 'Stabilizes Liquid Glass Fresnel reflections and volumetric slice dispersion',
+      condition: () => state.holographic.enabled,
+    },
+    {
+      slug: 'stereo-parallax-arbiter',
+      name: 'Stereoscopic Parallax Arbiter',
+      tier: 'OPTICS',
+      role: 'Regulates dual-eye analog separation convergence and zero crosstalk balance',
+      condition: () => state.stereoscopic.enabled,
+    },
+    {
+      slug: 'liquid-brain-synapse',
+      name: 'Liquid Brain Synapse Router',
+      tier: 'INTELLIGENCE',
+      role: 'Sustains hydrodynamic 3D app-shape topology fusion and helical torsion stability',
+      condition: () => state.liquidBrain.enabled,
+    },
+    {
+      slug: 'cynthetoc-neural-muse',
+      name: 'Cynthetoc Neural Reillumination Muse',
+      tier: 'INTELLIGENCE',
+      role: 'Synthesizes adaptive 3-point rim relighting and anisotropic detail sharpening',
+      condition: () => state.cynthetocAi.enabled,
+    },
+    {
+      slug: 'ferrofluid-harmonic-damper',
+      name: 'Ferrofluid Harmonic Damper',
+      tier: 'SUSTAIN',
+      role: 'Damps high-energy liquid basin ripples into smooth luminous standing waves',
+      condition: () => state.liquified3d.enabled,
+    },
+    {
+      slug: 'scope-anamorphic-guardian',
+      name: 'Anamorphic 2.39x Scope Guardian',
+      tier: 'CORE',
+      role: 'Maintains cinema shutter cadence, gate weave harmony, and streak flare headroom',
+      condition: () => state.anamorphicSqueeze,
+    },
+    {
+      slug: 'cel-ink-contour-weaver',
+      name: 'Sobel Cel Contour Weaver',
+      tier: 'OPTICS',
+      role: 'Harmonizes toon ink line thickness with liquid chroma quantization',
+      condition: () => state.videoToCartoon.enabled,
+    },
+    {
+      slug: 'phosphor-crt-sentinel',
+      name: 'Phosphor CRT Raster Sentinel',
+      tier: 'SUSTAIN',
+      role: 'Calibrates Real TV aperture grille persistence and analog chroma bleed',
+      condition: () => state.realTv.enabled,
+    },
+  ];
+
+  const computeQueenFitness = (): number => {
+    const seededCount = daemons.length - DAEMON_DEFINITIONS.length;
+    const activeModules = [
+      state.smartMorph.enabled,
+      state.holographic.enabled,
+      state.stereoscopic.enabled,
+      state.liquidBrain.enabled,
+      state.cynthetocAi.enabled,
+      state.liquified3d.enabled,
+      state.fusionMatrix.enabled,
+    ].filter(Boolean).length;
+    return Math.round(clamp(88 + activeModules * 1.3 + Math.min(4, seededCount * 0.4), 0, 100));
+  };
+
+  const getDaemonsJsonPayload = (): SerializedDaemonsPayload => {
+    const seededDaemons = daemons
+      .slice(DAEMON_DEFINITIONS.length)
+      .map((d) => ({
+        ...d,
+        seedVector: d.seedVector ? [...d.seedVector] as [number, number, number] : undefined,
+        telemetry: { ...d.telemetry },
+      }));
+    const allDaemons = daemons.map((d) => ({
+      ...d,
+      seedVector: d.seedVector ? [...d.seedVector] as [number, number, number] : undefined,
+      telemetry: { ...d.telemetry },
+    }));
+    const savedAt = new Date().toISOString();
+    return {
+      schema: 'fractal-os-daemons/v1',
+      queenVersion: '2.5.0',
+      savedAt,
+      totalDaemons: allDaemons.length,
+      baseDaemons: DAEMON_DEFINITIONS.length,
+      seededCount: seededDaemons.length,
+      queenConfig: { ...state.daemonQueen },
+      seededDaemons,
+      allDaemons,
+    };
+  };
+
+  let lastAutoSeedMs = performance.now();
+
+  const seedNewDaemon = (specialization?: string, autoSeeded = false): SovereignDaemon | null => {
+    const currentSeeded = daemons.length - DAEMON_DEFINITIONS.length;
+    if (currentSeeded >= state.daemonQueen.maxSeededDaemons) {
+      emit('queen:cap-reached', { max: state.daemonQueen.maxSeededDaemons });
+      return null;
+    }
+
+    const nextIdx = daemons.length + 1;
+    const prefix = `d${String(nextIdx).padStart(2, '0')}`;
+    const existingSlugs = new Set(daemons.map((d) => d.id.replace(/^d\d+-/, '')));
+
+    let chosenSlug = '';
+    let chosenName = '';
+    let chosenTier: SovereignDaemon['tier'] = 'QUEEN_SEED';
+    let chosenRole = '';
+
+    const cleanSpec = specialization?.trim();
+    if (cleanSpec) {
+      const slugBase = cleanSpec
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 28) || `custom-seed-${nextIdx}`;
+      chosenSlug = existingSlugs.has(slugBase) ? `${slugBase}-${nextIdx}` : slugBase;
+      chosenName = cleanSpec.slice(0, 48);
+      chosenTier = cleanSpec.toLowerCase().includes('morph')
+        ? 'MORPH'
+        : cleanSpec.toLowerCase().includes('holo') || cleanSpec.toLowerCase().includes('stereo')
+        ? 'OPTICS'
+        : 'QUEEN_SEED';
+      chosenRole = `Queen-seeded specialist governing ${cleanSpec}`;
+    } else {
+      const prioritized = QUEEN_ARCHETYPES.filter((a) => !existingSlugs.has(a.slug));
+      const matchedActive = prioritized.find((a) => a.condition()) || prioritized[0];
+      if (matchedActive) {
+        chosenSlug = matchedActive.slug;
+        chosenName = matchedActive.name;
+        chosenTier = matchedActive.tier;
+        chosenRole = matchedActive.role;
+      } else {
+        const genIndex = currentSeeded + 1;
+        const suffixes = ['Harmonic', 'Vector', 'Causal', 'Refractive', 'Coherence', 'Phyllotaxis'];
+        const label = suffixes[genIndex % suffixes.length];
+        chosenSlug = `queen-${label.toLowerCase()}-${nextIdx}`;
+        chosenName = `Queen ${label} Sentinel #${genIndex}`;
+        chosenTier = genIndex % 2 === 0 ? 'MORPH' : 'QUEEN_SEED';
+        chosenRole = `Autonomous swarm node amplifying ${label.toLowerCase()} natural expansion & module harmony`;
+      }
+    }
+
+    const nowMs = performance.now();
+    const seededAt = new Date().toISOString();
+    const expansionWeight = Number(
+      clamp(0.45 + (state.smartMorph.enabled ? state.smartMorph.expansionForce * 0.5 : 0.25), 0, 1).toFixed(3)
+    );
+    const synergyWeight = Number(
+      clamp(0.5 + (state.fusionMatrix.synergyGain - 0.5) * 0.35, 0, 1).toFixed(3)
+    );
+    const thermalGain = Number(
+      clamp(0.4 + state.sceneDesigner.sweepIntensity * 0.45, 0, 1).toFixed(3)
+    );
+
+    const child: SovereignDaemon = {
+      id: `${prefix}-${chosenSlug}`,
+      name: chosenName,
+      tier: chosenTier,
+      status: 'ACTIVE',
+      ticks: 1,
+      lastTickAt: nowMs,
+      loadPct: 4.2,
+      efficiencyPct: 99,
+      boostFactor: state.fusionMatrix.autoMaximize ? 2.4 : 1.5,
+      role: chosenRole,
+      parentQueenId: 'smart-daemon-queen',
+      seededAt,
+      seedVector: [expansionWeight, synergyWeight, thermalGain],
+      autoSeeded,
+      telemetry: {
+        queenParent: 'smart-daemon-queen',
+        vector: `${expansionWeight}/${synergyWeight}/${thermalGain}`,
+        morphActive: state.smartMorph.enabled,
+      },
+    };
+
+    daemons.push(child);
+    state.daemonQueen.lastSeededId = child.id;
+    state.daemonQueen.adaptiveFitness = computeQueenFitness();
+    lastAutoSeedMs = nowMs;
+
+    emit('queen:seeded', {
+      daemon: child,
+      payload: getDaemonsJsonPayload(),
+    });
+    return child;
+  };
+
+  const removeSeededDaemon = (id: string): boolean => {
+    const idx = daemons.findIndex((d, i) => i >= DAEMON_DEFINITIONS.length && d.id === id);
+    if (idx === -1) return false;
+    daemons.splice(idx, 1);
+    state.daemonQueen.adaptiveFitness = computeQueenFitness();
+    emit('queen:pruned', { id, payload: getDaemonsJsonPayload() });
+    return true;
+  };
+
+  const resetSeededDaemons = () => {
+    if (daemons.length > DAEMON_DEFINITIONS.length) {
+      daemons.splice(DAEMON_DEFINITIONS.length);
+    }
+    state.daemonQueen.lastSeededId = null;
+    state.daemonQueen.adaptiveFitness = computeQueenFitness();
+    emit('queen:reset', { payload: getDaemonsJsonPayload() });
+  };
+
+  const hydrateSeededDaemons = (seededList: SovereignDaemon[], savedAt?: string | null) => {
+    if (!Array.isArray(seededList)) return;
+    if (daemons.length > DAEMON_DEFINITIONS.length) {
+      daemons.splice(DAEMON_DEFINITIONS.length);
+    }
+    const baseIds = new Set(DAEMON_DEFINITIONS.map((d) => d.id));
+    for (const item of seededList) {
+      if (!item || typeof item.id !== 'string' || baseIds.has(item.id)) continue;
+      if (daemons.some((d) => d.id === item.id)) continue;
+      daemons.push({
+        id: item.id,
+        name: typeof item.name === 'string' ? item.name : item.id,
+        tier: item.tier || 'QUEEN_SEED',
+        status: item.status || 'ACTIVE',
+        ticks: typeof item.ticks === 'number' ? item.ticks : 0,
+        lastTickAt: performance.now(),
+        loadPct: typeof item.loadPct === 'number' ? item.loadPct : 4.5,
+        efficiencyPct: typeof item.efficiencyPct === 'number' ? item.efficiencyPct : 99,
+        boostFactor: typeof item.boostFactor === 'number' ? item.boostFactor : 2.0,
+        role: item.role,
+        parentQueenId: item.parentQueenId || 'smart-daemon-queen',
+        seededAt: item.seededAt || new Date().toISOString(),
+        seedVector: Array.isArray(item.seedVector) && item.seedVector.length === 3
+          ? [Number(item.seedVector[0]) || 0.6, Number(item.seedVector[1]) || 0.7, Number(item.seedVector[2]) || 0.5]
+          : [0.6, 0.7, 0.5],
+        autoSeeded: Boolean(item.autoSeeded),
+        telemetry: typeof item.telemetry === 'object' && item.telemetry ? { ...item.telemetry } : {},
+      });
+    }
+    if (savedAt) state.daemonQueen.lastSavedAt = savedAt;
+    if (daemons.length > DAEMON_DEFINITIONS.length) {
+      state.daemonQueen.lastSeededId = daemons[daemons.length - 1].id;
+    }
+    state.daemonQueen.adaptiveFitness = computeQueenFitness();
+    emit('queen:hydrated', { total: daemons.length, seeded: daemons.length - DAEMON_DEFINITIONS.length });
   };
 
   const projectHologramFromMainImage = (rigMode?: HologramRigMode) => {
@@ -1537,6 +2249,114 @@ function createFractalBrain(): FractalBrainAPI {
       projectHologramFromMainImage();
       applied.push('Liquid Glass Hologram Projected');
     }
+    if (commands.smartMorph && typeof commands.smartMorph === 'object') {
+      const sm = commands.smartMorph;
+      if (typeof sm.enabled === 'boolean') {
+        state.smartMorph.enabled = sm.enabled;
+        applied.push(`Smart Morph ${sm.enabled ? 'ON' : 'OFF'}`);
+      }
+      if (
+        sm.mode &&
+        ['organicExpand', 'gradientFlow', 'goldenSpiral', 'harmonicBreathe'].includes(sm.mode)
+      ) {
+        state.smartMorph.mode = sm.mode;
+        if (typeof sm.enabled !== 'boolean') state.smartMorph.enabled = true;
+        applied.push(`Morph ${sm.mode}`);
+      }
+      if (typeof sm.expansionForce === 'number') {
+        state.smartMorph.expansionForce = clamp(sm.expansionForce, 0, 1);
+      }
+      if (typeof sm.cohesion === 'number') {
+        state.smartMorph.cohesion = clamp(sm.cohesion, 0, 1);
+      }
+      if (typeof sm.flowRate === 'number') {
+        state.smartMorph.flowRate = clamp(sm.flowRate, 0.1, 2.5);
+      }
+      if (typeof sm.radialBias === 'number') {
+        state.smartMorph.radialBias = clamp(sm.radialBias, 0, 1);
+      }
+      if (typeof sm.edgePreserve === 'number') {
+        state.smartMorph.edgePreserve = clamp(sm.edgePreserve, 0, 1);
+      }
+      propagateFusionSynergy();
+    }
+    if (commands.daemonQueen && typeof commands.daemonQueen === 'object') {
+      const dq = commands.daemonQueen;
+      if (typeof dq.enabled === 'boolean') {
+        state.daemonQueen.enabled = dq.enabled;
+        applied.push(`Daemon Queen ${dq.enabled ? 'ON' : 'OFF'}`);
+      }
+      if (typeof dq.autoSeed === 'boolean') {
+        state.daemonQueen.autoSeed = dq.autoSeed;
+        applied.push(`Queen Auto-Seed ${dq.autoSeed ? 'ON' : 'OFF'}`);
+      }
+      if (typeof dq.seedIntervalSec === 'number') {
+        state.daemonQueen.seedIntervalSec = clamp(Math.round(dq.seedIntervalSec), 4, 60);
+      }
+      if (typeof dq.maxSeededDaemons === 'number') {
+        state.daemonQueen.maxSeededDaemons = clamp(Math.round(dq.maxSeededDaemons), 4, 48);
+      }
+    }
+    if (commands.seedNewDaemon && typeof commands.seedNewDaemon === 'object') {
+      const seeded = seedNewDaemon(commands.seedNewDaemon.specialization, false);
+      if (seeded) {
+        applied.push(`Queen Seeded ${seeded.id}`);
+      }
+    }
+    if (commands.abbyCio && typeof commands.abbyCio === 'object') {
+      const ab = commands.abbyCio;
+      if (typeof ab.enabled === 'boolean') {
+        state.abbyCio.enabled = ab.enabled;
+        applied.push(`Abby Video CIO ${ab.enabled ? 'ON' : 'OFF'}`);
+      }
+      if (
+        ab.logicProfile &&
+        ['balancedCinema', 'reactiveStage', 'editorialMatch', 'holoPrism'].includes(ab.logicProfile)
+      ) {
+        state.abbyCio.logicProfile = ab.logicProfile;
+        if (typeof ab.enabled !== 'boolean') state.abbyCio.enabled = true;
+        applied.push(`Abby ${ab.logicProfile}`);
+      }
+      if (typeof ab.adaptationRate === 'number') {
+        state.abbyCio.adaptationRate = clamp(ab.adaptationRate, 0.1, 1.0);
+      }
+      if (typeof ab.scanIntervalMs === 'number') {
+        state.abbyCio.scanIntervalMs = clamp(Math.round(ab.scanIntervalMs), 350, 3000);
+      }
+      if (typeof ab.matchGrading === 'boolean') state.abbyCio.matchGrading = ab.matchGrading;
+      if (typeof ab.matchSceneAndLiquid === 'boolean') state.abbyCio.matchSceneAndLiquid = ab.matchSceneAndLiquid;
+      if (typeof ab.matchMorphAndOptics === 'boolean') state.abbyCio.matchMorphAndOptics = ab.matchMorphAndOptics;
+    }
+    if (commands.kineticHarmonizer && typeof commands.kineticHarmonizer === 'object') {
+      const kh = commands.kineticHarmonizer;
+      if (typeof kh.enabled === 'boolean') {
+        state.kineticHarmonizer.enabled = kh.enabled;
+        applied.push(`Prism Harmonizer ${kh.enabled ? 'ON' : 'OFF'}`);
+      }
+      if (
+        kh.mode &&
+        ['chromaticRim', 'goldenAura', 'prismDiffract', 'thermalEcho'].includes(kh.mode)
+      ) {
+        state.kineticHarmonizer.mode = kh.mode;
+        if (typeof kh.enabled !== 'boolean') state.kineticHarmonizer.enabled = true;
+        applied.push(`Prism ${kh.mode}`);
+      }
+      if (typeof kh.harmonyStrength === 'number') {
+        state.kineticHarmonizer.harmonyStrength = clamp(kh.harmonyStrength, 0, 1);
+      }
+      if (typeof kh.edgeGlow === 'number') {
+        state.kineticHarmonizer.edgeGlow = clamp(kh.edgeGlow, 0, 1);
+      }
+      if (typeof kh.spectralShift === 'number') {
+        state.kineticHarmonizer.spectralShift = clamp(kh.spectralShift, 0, 1);
+      }
+      if (typeof kh.vignetteBalance === 'number') {
+        state.kineticHarmonizer.vignetteBalance = clamp(kh.vignetteBalance, 0, 1);
+      }
+      if (typeof kh.syncWithAbby === 'boolean') {
+        state.kineticHarmonizer.syncWithAbby = kh.syncWithAbby;
+      }
+    }
     if (commands.triggerLiquidPulse) {
       triggerLiquidPulse(1.15);
       applied.push('Liquid Pulse');
@@ -1626,6 +2446,22 @@ function createFractalBrain(): FractalBrainAPI {
       state.liquified3d.pulseEnergy = 0.28 * state.cynthetocAi.synthesisStrength;
     }
 
+    if (state.smartMorph.pulseBoost > 0.005) {
+      state.smartMorph.pulseBoost = Math.max(0, state.smartMorph.pulseBoost * 0.9 - 0.004);
+    } else {
+      state.smartMorph.pulseBoost = 0;
+    }
+
+    if (
+      state.daemonQueen.enabled &&
+      state.daemonQueen.autoSeed &&
+      nowMs - lastAutoSeedMs >= state.daemonQueen.seedIntervalSec * 1000
+    ) {
+      seedNewDaemon(undefined, true);
+    }
+
+    state.daemonQueen.adaptiveFitness = computeQueenFitness();
+
     daemons.forEach((d, idx) => {
       d.ticks += 1;
       d.lastTickAt = nowMs;
@@ -1710,7 +2546,7 @@ function createFractalBrain(): FractalBrainAPI {
           break;
         case 'd17-shader-coherence':
           d.status = 'SUSTAINING';
-          d.telemetry = { toon: state.videoToCartoon.enabled, tv: state.realTv.enabled };
+          d.telemetry = { toon: state.videoToCartoon.enabled, tv: state.realTv.enabled, morph: state.smartMorph.enabled };
           break;
         case 'd18-bandwidth-maximizer':
           d.status = maxMode ? 'MAXIMIZED' : 'SUSTAINING';
@@ -1723,23 +2559,64 @@ function createFractalBrain(): FractalBrainAPI {
         case 'd20-harmony-maximizer':
           d.status = maxMode ? 'MAXIMIZED' : 'SUSTAINING';
           d.telemetry = {
-            daemons: 20,
+            daemons: daemons.length,
+            seeded: daemons.length - DAEMON_DEFINITIONS.length,
             modules: appsMap.size,
             boost: `${d.boostFactor.toFixed(1)}x`,
             synergy: `${state.fusionMatrix.coherencePct}%`,
           };
           break;
+        default: {
+          if (d.tier === 'CIO') {
+            d.status = state.abbyCio.enabled ? 'MAXIMIZED' : 'SYNCED';
+            d.telemetry = {
+              scene: state.abbyCio.sceneClass,
+              luma: state.abbyCio.avgLuma,
+              motion: state.abbyCio.motionEnergy,
+              decisions: state.abbyCio.decisionsCount,
+            };
+          } else if (d.tier === 'HARMONIC') {
+            d.status = state.kineticHarmonizer.enabled ? 'ACTIVE' : 'SYNCED';
+            d.telemetry = {
+              mode: state.kineticHarmonizer.mode,
+              strength: state.kineticHarmonizer.harmonyStrength,
+              hex: state.abbyCio.dominantHex,
+            };
+          } else if (idx < DAEMON_DEFINITIONS.length) {
+            d.status = maxMode ? 'MAXIMIZED' : 'SUSTAINING';
+            d.telemetry = {
+              abbyActive: state.abbyCio.enabled,
+              daemons: daemons.length,
+              coherence: `${state.fusionMatrix.coherencePct}%`,
+            };
+          } else {
+            // Queen-seeded specialized child daemons
+            d.status = maxMode ? 'MAXIMIZED' : state.smartMorph.enabled ? 'ACTIVE' : 'SUSTAINING';
+            const vec = d.seedVector ?? [0.6, 0.7, 0.5];
+            d.telemetry = {
+              parentQueen: d.parentQueenId || 'smart-daemon-queen',
+              vector: `${vec[0]}/${vec[1]}/${vec[2]}`,
+              morphSync: state.smartMorph.enabled,
+            };
+          }
+          break;
+        }
       }
     });
   };
 
-  // Register and fuse csp-collector FIRST, then all remaining modules (20 total including cynthetoc-ai)
+  // Register and fuse csp-collector FIRST, then all remaining modules (27 total)
   for (const mod of REQUIRED_MODULES) {
     registerApp(mod.id, { name: mod.name, role: mod.role });
     fuseApp(mod.id, { bootPriority: mod.id === 'csp-collector' ? 0 : 1 });
   }
 
-  emit('brain:ready', { version: '2.5.0', primary: 'csp-collector', daemons: 20, apps: appsMap.size });
+  emit('brain:ready', {
+    version: '2.5.0',
+    primary: 'csp-collector',
+    daemons: DAEMON_DEFINITIONS.length,
+    apps: appsMap.size,
+  });
 
   return {
     version: '2.5.0',
@@ -1761,6 +2638,17 @@ function createFractalBrain(): FractalBrainAPI {
     setStereoscopic,
     setLiquidBrain,
     setHolographic,
+    setSmartMorph,
+    triggerNaturalExpansion,
+    setDaemonQueen,
+    seedNewDaemon,
+    removeSeededDaemon,
+    resetSeededDaemons,
+    hydrateSeededDaemons,
+    getDaemonsJsonPayload,
+    setAbbyCio,
+    evaluateAbbyLogic,
+    setKineticHarmonizer,
     projectHologramFromMainImage,
     fuseProjectedApps,
     alterAppShape,
@@ -1770,7 +2658,12 @@ function createFractalBrain(): FractalBrainAPI {
     syncPlaybackTime,
     getSnapshot,
     getApps,
-    getDaemons: () => daemons.map((d) => ({ ...d, telemetry: { ...d.telemetry } })),
+    getDaemons: () =>
+      daemons.map((d) => ({
+        ...d,
+        seedVector: d.seedVector ? [...d.seedVector] as [number, number, number] : undefined,
+        telemetry: { ...d.telemetry },
+      })),
     getEventLog: () => [...eventLog],
     emit,
     on,

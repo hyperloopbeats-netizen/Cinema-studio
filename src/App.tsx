@@ -5,9 +5,8 @@ import {
   Volume2,
   VolumeX,
   Repeat,
+  Cpu,
   Upload,
-  Sliders,
-  MessageSquare,
   Box,
   Film,
   Maximize2,
@@ -18,33 +17,51 @@ import {
   Brain,
   Eye,
   Hexagon,
+  Wand2,
+  Crown,
+  Aperture,
 } from 'lucide-react';
 import {
+  BASE_DAEMON_COUNT,
   getFractalBrain,
+  type AbbyLogicProfile,
+  type AbbyVideoCioConfig,
   type CinemaModeConfig,
   type ColorGradingState,
   type CynthetocAiConfig,
+  type DaemonQueenConfig,
   type FractalBrainSnapshot,
   type FractalStudioState,
   type FusionMatrixConfig,
   type HologramRigMode,
   type HolographicProjectionConfig,
+  type KineticHarmMode,
+  type KineticHarmonizerConfig,
   type LiquidBrainConfig,
   type Liquified3dConfig,
   type RealTvModeConfig,
   type SceneDesignerConfig,
+  type SmartMorphConfig,
+  type SmartMorphModeId,
   type Stereoscopic3dConfig,
   type StereoscopicModeId,
   type StudioCommandPayload,
   type UpscaleTier,
   type VideoToCartoonConfig,
 } from './core/fractalBrain';
+import { AbbyVideoSampler } from './core/abbyVideoCio';
 import { ProceduralScopeStream } from './core/proceduralStream';
 import { CinemaScopeEngine } from './core/cinemaEngine';
 import { exportStandaloneStudioHtml } from './core/standaloneExport';
 import { MicroFractalLogo } from './components/MicroFractalLogo';
-import { StudioDrawer } from './components/StudioDrawer';
-import { GeminiCopilotDrawer } from './components/GeminiCopilotDrawer';
+import {
+  DEFAULT_SMART_SECTION,
+  DEFAULT_STATION_SECTION,
+  SideMenu,
+  isSmartSection,
+  type SideMenuDomain,
+  type SideMenuSectionId,
+} from './components/SideMenu';
 
 function formatTimecode(sec: number): string {
   const s = Math.max(0, sec);
@@ -68,6 +85,24 @@ const HOLO_RIGS: HologramRigMode[] = [
   'liquidGlassPrism',
   'floatingCausticField',
 ];
+const SMART_MORPH_MODES: SmartMorphModeId[] = [
+  'organicExpand',
+  'gradientFlow',
+  'goldenSpiral',
+  'harmonicBreathe',
+];
+const ABBY_PROFILES: AbbyLogicProfile[] = [
+  'balancedCinema',
+  'reactiveStage',
+  'editorialMatch',
+  'holoPrism',
+];
+const KINETIC_HARM_MODES: KineticHarmMode[] = [
+  'chromaticRim',
+  'goldenAura',
+  'prismDiffract',
+  'thermalEcho',
+];
 
 const TV_PROFILE_LABEL: Record<RealTvModeConfig['profile'], string> = {
   crt: 'CRT 480i · 59.94 Hz',
@@ -81,14 +116,16 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<FractalBrainSnapshot>(() =>
     brainRef.current.getSnapshot()
   );
-  const [studioOpen, setStudioOpen] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [sideMenuDomain, setSideMenuDomain] = useState<SideMenuDomain>('smart');
+  const [sideMenuSection, setSideMenuSection] = useState<SideMenuSectionId>(DEFAULT_SMART_SECTION);
   const [dragActive, setDragActive] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<CinemaScopeEngine | null>(null);
   const procStreamRef = useRef<ProceduralScopeStream | null>(null);
+  const abbySamplerRef = useRef<AbbyVideoSampler | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const mediaUrlRef = useRef<string | null>(null);
@@ -112,13 +149,84 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [toastMsg]);
 
+  const persistDaemonsToServer = useCallback(async (downloadFile = false): Promise<boolean> => {
+    const brain = brainRef.current;
+    const payload = brain.getDaemonsJsonPayload();
+    let serverSaved = false;
+    try {
+      const res = await fetch('/api/daemons', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        brain.setDaemonQueen({ lastSavedAt: data?.savedAt || payload.savedAt });
+        serverSaved = true;
+      }
+    } catch {
+      // Fall back to client download if requested
+    }
+    if (downloadFile) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'daemons.json';
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast(
+        `Saved ${payload.totalDaemons} daemons (${payload.seededCount} seeded) to daemons.json`
+      );
+    }
+    return serverSaved;
+  }, [showToast]);
+
   useEffect(() => {
     const brain = brainRef.current;
-    const unsub = brain.on('*', () => {
+    let active = true;
+
+    fetch('/api/daemons')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data) return;
+        if (Array.isArray(data.seededDaemons) && data.seededDaemons.length > 0) {
+          brain.hydrateSeededDaemons(data.seededDaemons, data.savedAt || null);
+          setSnapshot(brain.getSnapshot());
+        } else if (data.savedAt) {
+          brain.setDaemonQueen({ lastSavedAt: data.savedAt });
+        }
+      })
+      .catch(() => {});
+
+    const unsubAny = brain.on('*', () => {
       setSnapshot(brain.getSnapshot());
     });
-    return unsub;
-  }, []);
+    const unsubSeeded = brain.on('queen:seeded', () => {
+      void persistDaemonsToServer(false);
+    });
+    const unsubPruned = brain.on('queen:pruned', () => {
+      void persistDaemonsToServer(false);
+    });
+    const unsubReset = brain.on('queen:reset', () => {
+      fetch('/api/daemons/reset', { method: 'POST' })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.savedAt) {
+            brain.setDaemonQueen({ lastSavedAt: data.savedAt });
+          }
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      active = false;
+      unsubAny();
+      unsubSeeded();
+      unsubPruned();
+      unsubReset();
+    };
+  }, [persistDaemonsToServer]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -130,6 +238,9 @@ export default function App() {
     }
     if (!engineRef.current) {
       engineRef.current = new CinemaScopeEngine(canvas);
+    }
+    if (!abbySamplerRef.current) {
+      abbySamplerRef.current = new AbbyVideoSampler();
     }
     if (!videoRef.current) {
       const vid = document.createElement('video');
@@ -146,6 +257,7 @@ export default function App() {
     let fpsLastSample = lastTs;
     let currentFps = 60;
     let lastUiSync = 0;
+    let lastAbbyScan = 0;
     let cinema24pAccum = 0;
     let cancelled = false;
 
@@ -225,6 +337,14 @@ export default function App() {
         engine.render(source, st, now * 0.001);
       } catch (err) {
         console.warn('Render tick recovered:', err);
+      }
+
+      if (st.abbyCio.enabled && now - lastAbbyScan >= Math.max(200, st.abbyCio.scanIntervalMs)) {
+        lastAbbyScan = now;
+        const abbyMetrics = abbySamplerRef.current?.sample(source);
+        if (abbyMetrics) {
+          brain.evaluateAbbyLogic(abbyMetrics, false);
+        }
       }
 
       fpsCounterFrames += 1;
@@ -503,6 +623,10 @@ export default function App() {
         stereoscopic: snap.state.stereoscopic,
         liquidBrain: snap.state.liquidBrain,
         holographic: snap.state.holographic,
+        smartMorph: snap.state.smartMorph,
+        abbyCio: snap.state.abbyCio,
+        kineticHarmonizer: snap.state.kineticHarmonizer,
+        daemonQueen: snap.state.daemonQueen,
         stage3d: snap.state.stage3d,
         fusionMatrix: snap.state.fusionMatrix,
       });
@@ -535,6 +659,30 @@ export default function App() {
       cynthetocDirectBusyRef.current = false;
     }
   }, [handleApplyAutopilotCommands, showToast]);
+
+  const handleRunAbbyScanNow = useCallback(() => {
+    const brain = brainRef.current;
+    const st = brain.getSnapshot().state;
+    const vid = videoRef.current;
+    const proc = procStreamRef.current;
+    let source: HTMLCanvasElement | HTMLVideoElement | HTMLImageElement | null = proc?.canvas ?? null;
+    if (st.mediaType === 'video' && vid && vid.readyState >= 2) {
+      source = vid;
+    } else if (st.mediaType === 'image' && imageRef.current && imageRef.current.complete) {
+      source = imageRef.current;
+    }
+    if (!source) return;
+    if (!abbySamplerRef.current) {
+      abbySamplerRef.current = new AbbyVideoSampler();
+    }
+    const metrics = abbySamplerRef.current.sample(source);
+    if (metrics) {
+      const decision = brain.evaluateAbbyLogic(metrics, true);
+      showToast(decision);
+    } else {
+      showToast('Abby sampled frame');
+    }
+  }, [showToast]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -618,10 +766,72 @@ export default function App() {
             showToast('Holographic Projection: OFF');
           }
         }
+      } else if (k === 'n') {
+        if (e.shiftKey) {
+          const currIdx = SMART_MORPH_MODES.indexOf(st.smartMorph.mode);
+          const nextMode = SMART_MORPH_MODES[(currIdx + 1) % SMART_MORPH_MODES.length];
+          brain.setSmartMorph({ enabled: true, mode: nextMode });
+          brain.triggerNaturalExpansion(1.0);
+          showToast(`Smart Morph: ${nextMode}`);
+        } else {
+          const nextMorph = !st.smartMorph.enabled;
+          if (nextMorph) {
+            brain.triggerNaturalExpansion(1.0);
+            showToast(`Smart Morph Natural Expansion: ${st.smartMorph.mode}`);
+          } else {
+            brain.setSmartMorph({ enabled: false });
+            showToast('Smart Morph Engine: OFF');
+          }
+        }
+      } else if (k === 'j') {
+        const seeded = brain.seedNewDaemon(undefined, false);
+        if (seeded) {
+          showToast(`Queen seeded ${seeded.name} -> daemons.json`);
+        } else {
+          showToast('Daemon Queen cap reached or paused');
+        }
+      } else if (k === 'b') {
+        if (e.shiftKey) {
+          const currIdx = ABBY_PROFILES.indexOf(st.abbyCio.logicProfile);
+          const nextProfile = ABBY_PROFILES[(currIdx + 1) % ABBY_PROFILES.length];
+          brain.setAbbyCio({ enabled: true, logicProfile: nextProfile });
+          handleRunAbbyScanNow();
+        } else {
+          const nextAbby = !st.abbyCio.enabled;
+          brain.setAbbyCio({ enabled: nextAbby });
+          if (nextAbby) {
+            handleRunAbbyScanNow();
+          } else {
+            showToast('Abby Video CIO: PAUSED');
+          }
+        }
+      } else if (k === 'p') {
+        if (e.shiftKey) {
+          const currIdx = KINETIC_HARM_MODES.indexOf(st.kineticHarmonizer.mode);
+          const nextMode = KINETIC_HARM_MODES[(currIdx + 1) % KINETIC_HARM_MODES.length];
+          brain.setKineticHarmonizer({ enabled: true, mode: nextMode });
+          showToast(`Kinetic Prism Harmonizer: ${nextMode}`);
+        } else {
+          const nextHarm = !st.kineticHarmonizer.enabled;
+          brain.setKineticHarmonizer({ enabled: nextHarm });
+          showToast(
+            nextHarm
+              ? `Kinetic Prism Harmonizer: ${st.kineticHarmonizer.mode}`
+              : 'Kinetic Prism Harmonizer: OFF'
+          );
+        }
       } else if (k === 'g') {
-        setStudioOpen((v) => !v);
+        setSideMenuOpen((v) => !v);
       } else if (k === 'c') {
-        setCopilotOpen((v) => !v);
+        setSideMenuDomain('smart');
+        setSideMenuSection((prevSection) => {
+          if (sideMenuOpen && prevSection === 'copilot') {
+            setSideMenuOpen(false);
+            return prevSection;
+          }
+          setSideMenuOpen(true);
+          return 'copilot';
+        });
       }
     };
 
@@ -641,7 +851,7 @@ export default function App() {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [cycleUpscaleTier, showToast, togglePlay]);
+  }, [cycleUpscaleTier, handleRunAbbyScanNow, showToast, sideMenuOpen, togglePlay]);
 
   const st = snapshot.state;
 
@@ -831,9 +1041,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Compact Structured 3-Zone Top Rail (28px) */}
+      {/* Structured 3-Zone Top Bar (28px) */}
       <header
-        className={`fixed top-0 inset-x-0 z-20 h-7 flex items-center justify-between gap-4 px-2.5 bg-[#050506]/90 backdrop-blur-sm border-b border-white/10 transition-opacity duration-300 ${
+        className={`fixed top-0 inset-x-0 z-20 h-7 flex items-center justify-between gap-6 px-2.5 bg-[#050506]/90 backdrop-blur-sm border-b border-white/10 transition-opacity duration-300 ${
           st.theatreView ? 'opacity-45 hover:opacity-100' : 'opacity-100'
         }`}
       >
@@ -844,13 +1054,60 @@ export default function App() {
           </span>
         </div>
 
-        <nav className="flex items-center gap-0.5 p-0.5 rounded bg-[#0c0c10] border border-white/10 text-[10px] font-medium overflow-x-auto fos-scroll max-w-full">
+        <nav className="flex items-center gap-1 p-0.5 rounded bg-[#0c0c10] border border-white/10 text-[10px] font-medium overflow-x-auto fos-scroll max-w-full">
+          <button
+            type="button"
+            onClick={() => {
+              if (sideMenuOpen && sideMenuDomain === 'smart') {
+                setSideMenuOpen(false);
+              } else {
+                setSideMenuDomain('smart');
+                if (!isSmartSection(sideMenuSection)) {
+                  setSideMenuSection(DEFAULT_SMART_SECTION);
+                }
+                setSideMenuOpen(true);
+              }
+            }}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
+              sideMenuOpen && sideMenuDomain === 'smart'
+                ? 'bg-[#ff6a00] text-[#050506] font-semibold'
+                : 'text-zinc-300 hover:text-zinc-100'
+            }`}
+            title="Open Smart Side Menu (G / C)"
+          >
+            <Cpu className="w-2.5 h-2.5" />
+            <span>Smart</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (sideMenuOpen && sideMenuDomain === 'station') {
+                setSideMenuOpen(false);
+              } else {
+                setSideMenuDomain('station');
+                if (isSmartSection(sideMenuSection)) {
+                  setSideMenuSection(DEFAULT_STATION_SECTION);
+                }
+                setSideMenuOpen(true);
+              }
+            }}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
+              sideMenuOpen && sideMenuDomain === 'station'
+                ? 'bg-[#ff6a00] text-[#050506] font-semibold'
+                : 'text-zinc-300 hover:text-zinc-100'
+            }`}
+            title="Open Station Side Menu (G)"
+          >
+            <Tv className="w-2.5 h-2.5" />
+            <span>Station</span>
+          </button>
+          <span className="w-px h-3 bg-white/10 mx-0.5 hidden sm:inline-block" />
           <button
             type="button"
             onClick={() => brainRef.current.set('mode', 'movie')}
             className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
               st.mode === 'movie'
-                ? 'bg-[#ff6a00] text-[#050506] font-semibold'
+                ? 'bg-[#ff6a00]/20 text-[#ff8c2e] font-semibold'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
@@ -865,51 +1122,23 @@ export default function App() {
             }}
             className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
               st.mode === '3d'
-                ? 'bg-[#ff6a00] text-[#050506] font-semibold'
+                ? 'bg-[#ff6a00]/20 text-[#ff8c2e] font-semibold'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
             <Box className="w-2.5 h-2.5" />
-            <span>Liquified 3D (2)</span>
-          </button>
-          <span className="w-px h-3 bg-white/10 mx-0.5 hidden sm:inline-block" />
-          <button
-            type="button"
-            onClick={() => setStudioOpen((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
-              studioOpen
-                ? 'bg-[#ff6a00]/20 text-[#ff8c2e]'
-                : 'text-zinc-400 hover:text-zinc-100'
-            }`}
-          >
-            <Sliders className="w-2.5 h-2.5" />
-            <span>Apps (G)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCopilotOpen((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded whitespace-nowrap shrink-0 transition-colors ${
-              copilotOpen
-                ? 'bg-[#ff6a00]/20 text-[#ff8c2e]'
-                : 'text-zinc-400 hover:text-zinc-100'
-            }`}
-          >
-            <MessageSquare className="w-2.5 h-2.5" />
-            <span>Autopilot (C)</span>
+            <span>3D Stage (2)</span>
           </button>
         </nav>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="hidden lg:inline text-[10px] font-mono tabular-nums text-zinc-400 whitespace-nowrap">
-            {st.realTv.enabled ? 'TV' : st.cinema.aspectRatio} · {st.fps.toFixed(0)}fps · 20D
-          </span>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#ff6a00] hover:bg-[#ff8c2e] text-[#050506] text-[10px] font-semibold whitespace-nowrap shrink-0 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#ff6a00] hover:bg-[#ff8c2e] text-[#050506] text-[10px] font-semibold whitespace-nowrap shrink-0 transition-colors"
           >
             <Upload className="w-2.5 h-2.5" />
-            <span>Load</span>
+            <span>Load Media</span>
           </button>
         </div>
       </header>
@@ -921,7 +1150,7 @@ export default function App() {
           <span className="text-zinc-500">·</span>
           <span>{st.frameTimeMs.toFixed(1)} ms</span>
           <span className="text-zinc-500">·</span>
-          <span>20D · {st.fusionMatrix.coherencePct}%</span>
+          <span>{snapshot.daemons.length}D · {st.fusionMatrix.coherencePct}%</span>
           {st.mode === '3d' && (
             <>
               <span className="text-zinc-500">·</span>
@@ -946,9 +1175,13 @@ export default function App() {
         </div>
       )}
 
-      <StudioDrawer
-        open={studioOpen}
-        onClose={() => setStudioOpen(false)}
+      <SideMenu
+        open={sideMenuOpen}
+        onClose={() => setSideMenuOpen(false)}
+        domain={sideMenuDomain}
+        onSelectDomain={setSideMenuDomain}
+        section={sideMenuSection}
+        onSelectSection={setSideMenuSection}
         state={st}
         apps={snapshot.apps}
         daemons={snapshot.daemons}
@@ -985,6 +1218,44 @@ export default function App() {
         onUpdateHolographic={(patch: Partial<HolographicProjectionConfig>) =>
           brainRef.current.setHolographic(patch)
         }
+        onUpdateSmartMorph={(patch: Partial<SmartMorphConfig>) =>
+          brainRef.current.setSmartMorph(patch)
+        }
+        onTriggerNaturalExpansion={() => {
+          brainRef.current.triggerNaturalExpansion(1.1);
+          engineRef.current?.injectRipple(0.5, 0.5, performance.now() * 0.001);
+          showToast(`Smart Morph Natural Expansion: ${st.smartMorph.mode}`);
+        }}
+        onUpdateAbbyCio={(patch: Partial<AbbyVideoCioConfig>) =>
+          brainRef.current.setAbbyCio(patch)
+        }
+        onRunAbbyScanNow={handleRunAbbyScanNow}
+        onUpdateKineticHarmonizer={(patch: Partial<KineticHarmonizerConfig>) =>
+          brainRef.current.setKineticHarmonizer(patch)
+        }
+        onUpdateDaemonQueen={(patch: Partial<DaemonQueenConfig>) =>
+          brainRef.current.setDaemonQueen(patch)
+        }
+        onSeedDaemon={(specialization?: string) => {
+          const seeded = brainRef.current.seedNewDaemon(specialization, false);
+          if (seeded) {
+            showToast(`Queen seeded ${seeded.name} -> daemons.json`);
+          } else {
+            showToast('Daemon Queen cap reached or paused');
+          }
+        }}
+        onRemoveSeededDaemon={(id: string) => {
+          if (brainRef.current.removeSeededDaemon(id)) {
+            showToast(`Removed ${id} from swarm & daemons.json`);
+          }
+        }}
+        onResetSeededDaemons={() => {
+          brainRef.current.resetSeededDaemons();
+          showToast(`Pruned seeded child daemons to ${BASE_DAEMON_COUNT} base daemons`);
+        }}
+        onSaveDaemonsJson={(download?: boolean) => {
+          void persistDaemonsToServer(Boolean(download));
+        }}
         onProjectHologram={() => {
           brainRef.current.projectHologramFromMainImage();
           engineRef.current?.injectRipple(0.5, 0.5, performance.now() * 0.001);
@@ -1003,7 +1274,7 @@ export default function App() {
         }}
         onMaximizeSystem={() => {
           const summary = brainRef.current.maximizeSystem();
-          showToast(summary[0] || '20 Daemons Maximized');
+          showToast(summary[0] || `${snapshot.daemons.length} Daemons Maximized`);
         }}
         onUpdateState={(patch: Partial<FractalStudioState>) =>
           brainRef.current.set(patch)
@@ -1051,11 +1322,8 @@ export default function App() {
         }}
         onCaptureSnapshot={handleCaptureSnapshot}
         onExportHtml={handleExportHtml}
-      />
-
-      <GeminiCopilotDrawer
-        open={copilotOpen}
-        onClose={() => setCopilotOpen(false)}
+        onLoadMediaClick={() => fileInputRef.current?.click()}
+        onResetScopeStream={resetToProceduralStream}
         getSnapshot={() => brainRef.current.getSnapshot()}
         onCaptureFrame={() => engineRef.current?.captureSnapshotPng() ?? null}
         onApplyCommands={handleApplyAutopilotCommands}
@@ -1118,13 +1386,10 @@ export default function App() {
             )}
           </div>
 
-          {/* Band B: Structured Control Groups (Transport | Optics | Stage & Modes) */}
+          {/* Band B: Transport | Smart Engines | Station Decks */}
           <div className="flex items-center justify-between gap-2 overflow-x-auto fos-scroll">
             {/* Group 1: Transport */}
             <div className="flex items-center gap-1 shrink-0">
-              <span className="hidden xl:inline text-[9px] font-medium text-zinc-500 mr-0.5">
-                Transport
-              </span>
               <button
                 type="button"
                 onClick={togglePlay}
@@ -1160,11 +1425,149 @@ export default function App() {
 
             <div className="w-px h-3.5 bg-white/10 shrink-0" />
 
-            {/* Group 2: Optics & Resolution */}
+            {/* Group 2: Smart Quick Toggles */}
             <div className="flex items-center gap-1 shrink-0">
-              <span className="hidden xl:inline text-[9px] font-medium text-zinc-500 mr-0.5">
-                Optics
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSideMenuDomain('smart');
+                  if (!isSmartSection(sideMenuSection)) setSideMenuSection(DEFAULT_SMART_SECTION);
+                  setSideMenuOpen(true);
+                }}
+                className="hidden xl:inline text-[9px] font-semibold text-[#ff8c2e] hover:underline mr-0.5 whitespace-nowrap"
+              >
+                Smart
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextAbby = !st.abbyCio.enabled;
+                  brainRef.current.setAbbyCio({ enabled: nextAbby });
+                  if (nextAbby) {
+                    handleRunAbbyScanNow();
+                  } else {
+                    showToast('Abby Video CIO: PAUSED');
+                  }
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  st.abbyCio.enabled
+                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
+                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
+                }`}
+                title="Toggle Abby Automatic Video CIO (B, Shift+B cycles logic & scans)"
+              >
+                <Aperture className="w-2.5 h-2.5" />
+                <span>Abby (B)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextHarm = !st.kineticHarmonizer.enabled;
+                  brainRef.current.setKineticHarmonizer({ enabled: nextHarm });
+                  showToast(
+                    nextHarm
+                      ? `Kinetic Prism Harmonizer: ${st.kineticHarmonizer.mode}`
+                      : 'Kinetic Prism Harmonizer: OFF'
+                  );
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  st.kineticHarmonizer.enabled
+                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
+                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
+                }`}
+                title="Toggle Kinetic Prism Harmonizer (P, Shift+P cycles mode)"
+              >
+                <Activity className="w-2.5 h-2.5" />
+                <span>Prism (P)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextCyn = !st.cynthetocAi.enabled;
+                  brainRef.current.setCynthetocAi({ enabled: nextCyn });
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  st.cynthetocAi.enabled
+                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
+                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
+                }`}
+                title="Toggle Cynthetoc AI Neural Synthesis & Relight (Z)"
+              >
+                <Brain className="w-2.5 h-2.5" />
+                <span>Cynthetoc (Z)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextMorph = !st.smartMorph.enabled;
+                  if (nextMorph) {
+                    brainRef.current.triggerNaturalExpansion(1.0);
+                    showToast(`Smart Morph: ${st.smartMorph.mode}`);
+                  } else {
+                    brainRef.current.setSmartMorph({ enabled: false });
+                    showToast('Smart Morph Engine: OFF');
+                  }
+                }}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  st.smartMorph.enabled
+                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
+                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
+                }`}
+                title="Toggle Smart Morph Natural Frame Expansion (N, Shift+N cycles mode)"
+              >
+                <Wand2 className="w-2.5 h-2.5" />
+                <span>Morph (N)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  brainRef.current.setVideoToCartoon({
+                    enabled: !st.videoToCartoon.enabled,
+                  })
+                }
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
+                  st.videoToCartoon.enabled
+                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
+                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
+                }`}
+                title="Toggle Intelligent Video to Cartoon (X)"
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                <span>Toon (X)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const seeded = brainRef.current.seedNewDaemon(undefined, false);
+                  if (seeded) {
+                    showToast(`Queen seeded ${seeded.name} -> daemons.json`);
+                  } else {
+                    showToast('Daemon Queen cap reached or paused');
+                  }
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-[#111115] border-white/10 text-zinc-300 hover:border-[#ff6a00] hover:text-[#ff9438] whitespace-nowrap shrink-0 transition-colors"
+                title="Smart Daemon Queen: Seed new daemon & save to daemons.json (J)"
+              >
+                <Crown className="w-2.5 h-2.5 text-[#ff6a00]" />
+                <span>Queen (J)</span>
+              </button>
+            </div>
+
+            <div className="w-px h-3.5 bg-white/10 shrink-0" />
+
+            {/* Group 3: Station Quick Toggles */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setSideMenuDomain('station');
+                  if (isSmartSection(sideMenuSection)) setSideMenuSection(DEFAULT_STATION_SECTION);
+                  setSideMenuOpen(true);
+                }}
+                className="hidden xl:inline text-[9px] font-semibold text-zinc-400 hover:text-zinc-100 mr-0.5 whitespace-nowrap"
+              >
+                Station
+              </button>
               <button
                 type="button"
                 onClick={() => brainRef.current.set('subtractMode', !st.subtractMode)}
@@ -1205,15 +1608,6 @@ export default function App() {
                   ? 'Liquid (K)'
                   : `${st.upscaleMode.toUpperCase()} (K)`}
               </button>
-            </div>
-
-            <div className="w-px h-3.5 bg-white/10 shrink-0" />
-
-            {/* Group 3: Stage & Intelligent Modes */}
-            <div className="flex items-center gap-1 shrink-0">
-              <span className="hidden xl:inline text-[9px] font-medium text-zinc-500 mr-0.5">
-                Stage
-              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -1229,7 +1623,7 @@ export default function App() {
                     ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
                     : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
                 }`}
-                title="Toggle Liquified 3D Studio (2)"
+                title="Toggle Liquified 3D Stage (2)"
               >
                 <Droplets className="w-2.5 h-2.5" />
                 <span>3D Liquid</span>
@@ -1275,39 +1669,6 @@ export default function App() {
               >
                 <Eye className="w-2.5 h-2.5" />
                 <span>Stereo (Y)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const nextCyn = !st.cynthetocAi.enabled;
-                  brainRef.current.setCynthetocAi({ enabled: nextCyn });
-                }}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
-                  st.cynthetocAi.enabled
-                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
-                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
-                }`}
-                title="Toggle Cynthetoc AI Neural Synthesis & Relight (Z)"
-              >
-                <Brain className="w-2.5 h-2.5" />
-                <span>Cynthetoc (Z)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  brainRef.current.setVideoToCartoon({
-                    enabled: !st.videoToCartoon.enabled,
-                  })
-                }
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border whitespace-nowrap shrink-0 transition-colors ${
-                  st.videoToCartoon.enabled
-                    ? 'bg-[#ff6a00] border-[#ff6a00] text-[#050506] font-semibold'
-                    : 'bg-[#111115] border-white/10 text-zinc-300 hover:border-white/25'
-                }`}
-                title="Toggle Intelligent Video to Cartoon (X)"
-              >
-                <Sparkles className="w-2.5 h-2.5" />
-                <span>Toon (X)</span>
               </button>
               <button
                 type="button"

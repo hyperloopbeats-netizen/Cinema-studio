@@ -297,6 +297,71 @@ const applyStudioCommandsDeclaration: FunctionDeclaration = {
         type: Type.BOOLEAN,
         description: "Switch to 3D Stage with Liquid Glass basin reflections and project the main image as an active volumetric hologram.",
       },
+      smartMorph: {
+        type: Type.OBJECT,
+        description: "Smart Morph Engine moving elements within a frame & 3D stage towards their natural expansion.",
+        properties: {
+          enabled: { type: Type.BOOLEAN, description: "Enable or disable Smart Morph natural expansion." },
+          mode: {
+            type: Type.STRING,
+            description: "Morph expansion algorithm: 'organicExpand', 'gradientFlow', 'goldenSpiral', or 'harmonicBreathe'.",
+          },
+          expansionForce: { type: Type.NUMBER, description: "Natural outward expansion force from 0.0 to 1.0." },
+          cohesion: { type: Type.NUMBER, description: "Subject form cohesion from 0.0 to 1.0." },
+          flowRate: { type: Type.NUMBER, description: "Expansion cadence rate from 0.1 to 2.5." },
+          radialBias: { type: Type.NUMBER, description: "Balance between local luminance gradient vs golden-ratio radial vector (0.0 to 1.0)." },
+          edgePreserve: { type: Type.NUMBER, description: "Contour edge preservation from 0.0 to 1.0." },
+        },
+      },
+      daemonQueen: {
+        type: Type.OBJECT,
+        description: "Smart Daemon Queen controller for autonomous swarm seeding and JSON persistence.",
+        properties: {
+          enabled: { type: Type.BOOLEAN, description: "Enable or disable Smart Daemon Queen." },
+          autoSeed: { type: Type.BOOLEAN, description: "Enable or disable periodic automatic seeding of new daemons." },
+          seedIntervalSec: { type: Type.NUMBER, description: "Auto-seed interval in seconds (4 to 60)." },
+          maxSeededDaemons: { type: Type.NUMBER, description: "Maximum number of Queen-seeded child daemons (4 to 48)." },
+        },
+      },
+      seedNewDaemon: {
+        type: Type.OBJECT,
+        description: "Have the Smart Daemon Queen seed a new specialized daemon and save it to daemons.json.",
+        properties: {
+          specialization: { type: Type.STRING, description: "Optional specialty name/duty for the new daemon (or omit for smart auto-selection)." },
+        },
+      },
+      abbyCio: {
+        type: Type.OBJECT,
+        description: "Abby Automatic Video CIO: analyzes the live frame and continuously adjusts studio designs to match what is on screen.",
+        properties: {
+          enabled: { type: Type.BOOLEAN, description: "Enable or disable Abby Automatic Video CIO." },
+          logicProfile: {
+            type: Type.STRING,
+            description: "Abby logic profile: 'balancedCinema', 'reactiveStage', 'editorialMatch', or 'holoPrism'.",
+          },
+          scanIntervalMs: { type: Type.NUMBER, description: "Live frame sampling cadence in ms (250 to 3000)." },
+          adaptationRate: { type: Type.NUMBER, description: "Design interpolation speed toward matched targets (0.08 to 1.0)." },
+          matchGrading: { type: Type.BOOLEAN, description: "Allow Abby to adapt color grading to live frame." },
+          matchSceneAndLiquid: { type: Type.BOOLEAN, description: "Allow Abby to adapt Scene Designer and Liquified 3D theme/motion." },
+          matchMorphAndOptics: { type: Type.BOOLEAN, description: "Allow Abby to adapt Smart Morph, Cynthetoc AI, and Kinetic Prism Harmonizer." },
+        },
+      },
+      kineticHarmonizer: {
+        type: Type.OBJECT,
+        description: "Kinetic Prism Harmonizer: spectral contour glow, golden aura, prism diffraction, and adaptive vignette synced with the screen.",
+        properties: {
+          enabled: { type: Type.BOOLEAN, description: "Enable or disable Kinetic Prism Harmonizer." },
+          mode: {
+            type: Type.STRING,
+            description: "Harmonizer mode: 'chromaticRim', 'goldenAura', 'prismDiffract', or 'thermalEcho'.",
+          },
+          harmonyStrength: { type: Type.NUMBER, description: "Spectral aura strength (0.0 to 1.0)." },
+          edgeGlow: { type: Type.NUMBER, description: "Screen-matched contour edge glow (0.0 to 1.0)." },
+          spectralShift: { type: Type.NUMBER, description: "Prism channel dispersion shift (0.0 to 1.0)." },
+          vignetteBalance: { type: Type.NUMBER, description: "Adaptive optical vignette balance (0.0 to 1.0)." },
+          syncWithAbby: { type: Type.BOOLEAN, description: "Lock harmonizer color to Abby's live dominant screen color." },
+        },
+      },
       triggerLiquidPulse: {
         type: Type.BOOLEAN,
         description: "Inject an energetic radial liquid pulse ripple through the 3D studio and screen.",
@@ -358,6 +423,31 @@ function resolveThinkingLevel(
   return undefined;
 }
 
+const DAEMONS_JSON_PATH = path.resolve(__dirname, "daemons.json");
+
+function readDaemonsJsonFile(): Record<string, unknown> {
+  try {
+    if (fs.existsSync(DAEMONS_JSON_PATH)) {
+      const raw = fs.readFileSync(DAEMONS_JSON_PATH, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return parsed as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // Fall back to clean default schema if corrupted/unreadable
+  }
+  return {
+    schema: "fractal-os-daemons/v1",
+    queenVersion: "2.5.0",
+    savedAt: null,
+    totalDaemons: 40,
+    baseDaemons: 40,
+    seededCount: 0,
+    seededDaemons: [],
+  };
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: "10mb" }));
@@ -368,6 +458,65 @@ async function startServer() {
       service: "fractal-os-cinemascope-studio",
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     });
+  });
+
+  app.get("/api/daemons", (_req, res) => {
+    const data = readDaemonsJsonFile();
+    res.json({ ok: true, file: "daemons.json", ...data });
+  });
+
+  app.post("/api/daemons", (req, res) => {
+    try {
+      const body = (req.body || {}) as Record<string, unknown>;
+      const seededDaemons = Array.isArray(body.seededDaemons) ? body.seededDaemons : [];
+      const savedAt = new Date().toISOString();
+      const payload = {
+        schema: "fractal-os-daemons/v1",
+        queenVersion: typeof body.queenVersion === "string" ? body.queenVersion : "2.5.0",
+        savedAt,
+        totalDaemons:
+          typeof body.totalDaemons === "number"
+            ? body.totalDaemons
+            : 40 + seededDaemons.length,
+        baseDaemons: typeof body.baseDaemons === "number" ? body.baseDaemons : 40,
+        seededCount: seededDaemons.length,
+        queenConfig:
+          body.queenConfig && typeof body.queenConfig === "object" ? body.queenConfig : undefined,
+        seededDaemons,
+        allDaemons: Array.isArray(body.allDaemons) ? body.allDaemons : undefined,
+      };
+      fs.writeFileSync(DAEMONS_JSON_PATH, JSON.stringify(payload, null, 2), "utf-8");
+      res.json({
+        ok: true,
+        file: "daemons.json",
+        savedAt,
+        totalDaemons: payload.totalDaemons,
+        seededCount: payload.seededCount,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to persist daemons.json";
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  app.post("/api/daemons/reset", (_req, res) => {
+    try {
+      const savedAt = new Date().toISOString();
+      const payload = {
+        schema: "fractal-os-daemons/v1",
+        queenVersion: "2.5.0",
+        savedAt,
+        totalDaemons: 40,
+        baseDaemons: 40,
+        seededCount: 0,
+        seededDaemons: [],
+      };
+      fs.writeFileSync(DAEMONS_JSON_PATH, JSON.stringify(payload, null, 2), "utf-8");
+      res.json({ ok: true, file: "daemons.json", savedAt, totalDaemons: 40, seededCount: 0 });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to reset daemons.json";
+      res.status(500).json({ ok: false, error: msg });
+    }
   });
 
   app.post("/api/chat", async (req, res) => {
@@ -393,13 +542,13 @@ async function startServer() {
         systemParts.push(body.systemInstruction.trim());
       } else {
         systemParts.push(
-          "You are Cynthetoc AI & the FractalOS CinemaScope Copilot & Autopilot, orchestrating Cynthetoc AI Neural Synthesis, Liquified 3D Studio, Intelligent Scene Designer, Intelligent Video to Cartoon, Intelligent Fusion Matrix, Cinema Mode, Real TV Mode, and 20 Sovereign Daemons."
+          "You are Cynthetoc AI, Abby Video CIO & the FractalOS CinemaScope Copilot & Autopilot, orchestrating Abby Automatic Video CIO, Kinetic Prism Harmonizer, Cynthetoc AI Neural Synthesis, Liquified 3D Studio, Intelligent Scene Designer, Intelligent Video to Cartoon, Intelligent Fusion Matrix, Cinema Mode, Real TV Mode, Smart Morph, Smart Daemon Queen, and 40+ Sovereign Daemons across 27 fused modules."
         );
       }
 
       if (autopilotEnabled) {
         systemParts.push(
-          "AUTOPILOT & CYNTHETOC AI ACTIVE: Whenever the user asks to project a hologram from the main image / liquid glass reflection (holographic / projectHologram), direct a look, enable Stereoscopic 3D separation (stereoscopic), project/fuse/alter Apps in 3D shapes via Liquid Brain (liquidBrain), enable Cynthetoc AI (cynthetocAi), configure Liquified 3D Studio, design a scene, convert video to cartoon, maximize systems/daemons (up to 9 cones), or adjust Cinema/Real TV/LUT settings, you MUST call `apply_studio_commands` with exact matching parameters."
+          "AUTOPILOT & ABBY VIDEO CIO ACTIVE: Whenever the user asks to configure Abby Automatic Video CIO (abbyCio), enable Kinetic Prism Harmonizer (kineticHarmonizer), enable Smart Morph / expand frame elements naturally (smartMorph), seed new daemons via the Smart Daemon Queen (daemonQueen / seedNewDaemon), project a hologram from the main image / liquid glass reflection (holographic / projectHologram), direct a look, enable Stereoscopic 3D separation (stereoscopic), project/fuse/alter Apps in 3D shapes via Liquid Brain (liquidBrain), enable Cynthetoc AI (cynthetocAi), configure Liquified 3D Studio, design a scene, convert video to cartoon, maximize systems/daemons (up to 9 cones), or adjust Cinema/Real TV/LUT settings, you MUST call `apply_studio_commands` with exact matching parameters."
         );
       }
 
@@ -599,9 +748,9 @@ async function startServer() {
         }
       }
 
-      const intent = (body.intent || "Synthesize optimal 2.39:1 Cynthetoc AI look across all 20 modules").trim();
+      const intent = (body.intent || "Synthesize optimal 2.39:1 Cynthetoc AI & Abby Video CIO look across all 27 fused modules").trim();
       parts.push({
-        text: `Cynthetoc AI Direct Intent: "${intent}"\n\nLive Studio State:\n${(body.studioContext || "{}").slice(0, 3000)}\n\nCall apply_studio_commands right now to configure Cynthetoc AI, color grading, optics, scene designer, and/or Liquified 3D harmoniously, and summarize your artistic & technical directive concisely.`,
+        text: `Cynthetoc AI Direct Intent: "${intent}"\n\nLive Studio State:\n${(body.studioContext || "{}").slice(0, 3000)}\n\nCall apply_studio_commands right now to configure Abby Video CIO, Kinetic Prism Harmonizer, Cynthetoc AI, color grading, optics, scene designer, and/or Liquified 3D harmoniously, and summarize your artistic & technical directive concisely.`,
       });
 
       const response1 = await ai.models.generateContent({

@@ -1,0 +1,9 @@
+{
+  "schema": "fractal-os-daemons/v1",
+  "queenVersion": "2.5.0",
+  "savedAt": "2026-11-19T08:05:24.222Z",
+  "totalDaemons": 40,
+  "baseDaemons": 40,
+  "seededCount": 0,
+  "seededDaemons": []
+}
