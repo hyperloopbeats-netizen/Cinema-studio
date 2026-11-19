@@ -1,0 +1,6 @@
+{
+  "name": "FractalOS // CinemaScope Studio",
+  "description": "Self-contained 2.39:1 anamorphic CinemaScope studio running on a black-and-orange MicroFractal OS with dual Movie and 3D auditorium projection, FractalBrain v2.5.0, Liquid 8K/16K/64K upscaling, color grading, and Gemini Studio Copilot.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
